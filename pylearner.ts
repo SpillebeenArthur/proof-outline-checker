@@ -1973,24 +1973,14 @@ function parseProofOutline(stmts: Statement[], i: number, precededByAssert: bool
     });
     return Seq(Assign(stmt.loc, x, parseProofOutlineExpression(stmt.expr.rhs)), parseProofOutline(stmts, i + 1, false));  
   } 
-
-  //SubscriptExpression
   else if (stmt instanceof ExpressionStatement && stmt.expr instanceof AssignmentExpression && stmt.expr.op == '=' && stmt.expr.lhs instanceof SubscriptExpression){
     const rhs = stmt.expr.rhs;
     const lhs = stmt.expr.lhs;
     const lhs_index = lhs.index;
     const lhs_target = lhs.target as VariableExpression;
-    
-    //res[i] = -res[i] vervang door onderstaande
-    //res = res[:i] + [-res[i]] + res[i + 1:]
-
-
-    //res 
     const x = lhs_target.getProofOutlineVariable(() => {
       return stmt.executionError(`Toekenningen aan variabelen van het type ${lhs.type} worden nog niet ondersteund.`);
     });
-    
-    //res[:i]
     let zeroIntLiteral = new IntLiteral(stmt.loc,0);
     zeroIntLiteral.type = intType;
     
@@ -1998,16 +1988,14 @@ function parseProofOutline(stmts: Statement[], i: number, precededByAssert: bool
     let firstSliceExpressionType = new InferredType();
     firstSliceExpressionType.type = new ListType(new InferredType().type = intType);
     firstSliceExpression.type = firstSliceExpressionType;
-    //[-res[i]]
+    
     const listExpression = new ListExpression(rhs.loc,rhs.instrLoc!,new ImplicitTypeExpression(),[stmt.expr.rhs]);
     listExpression.type = new ListType(new InferredType().type = intType);
 
-    //res[i +1:]
     let oneIntLiteral = new IntLiteral(stmt.loc,1)
     oneIntLiteral.type = intType;
     const binaryOperatorExpression = new BinaryOperatorExpression(stmt.loc,stmt.instrLoc!,lhs_index,"+",oneIntLiteral)
     binaryOperatorExpression.type = new ListType(intType);
-    //van i+1 tot len lijst!
 
     const lenExpression = new LenExpression(stmt.loc,stmt.instrLoc!,lhs_target)
     lenExpression.type = intType;
@@ -2023,7 +2011,6 @@ function parseProofOutline(stmts: Statement[], i: number, precededByAssert: bool
     const concat =  App(rhs.loc, App(rhs.loc, Const(rhs.loc, intListPlusConst), leftConcat), t3);
     
     return Seq(Assign(stmt.loc, x, concat), parseProofOutline(stmts, i + 1, false));  
-
   }
   else if (stmt instanceof IfStatement) {
     if (stmt.elseBody == null)

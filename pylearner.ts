@@ -1349,10 +1349,143 @@ class ArrayTypeExpression extends TypeExpression {
     return this.type;
   }
 }
+declare var Immutable: typeof import('./node_modules/immutable/dist/immutable');
+
+const ImmutableSet = Immutable.Set;
+
+class MayAlias {
+  relations:  Immutable.Set< Immutable.Set<string>>;
+  
+  constructor(relations?:  Immutable.Set< Immutable.Set<string>>) {
+    if(relations){
+      let sortedRelations :  Immutable.Set<Immutable.Set<string>> = ImmutableSet();
+      relations.forEach(r => {
+        sortedRelations = sortedRelations.add(r.sort())
+      })
+      this.relations = sortedRelations;
+    }
+    else{
+      this.relations = ImmutableSet();
+    }
+    
+  }
+  removeVariableInRelations(variable: string)
+  {
+    let newRelations : Immutable.Set<Immutable.Set<string>> = ImmutableSet();
+    for (var relation of this.relations)
+    {
+      newRelations = newRelations.add(relation.filter(v => variable != v))
+    }
+    newRelations = newRelations.filter(r => r.size > 1);
+    return new MayAlias(newRelations);
+
+  }
+  keepRelationsWithVariables(variables:string[]){
+    let newRelations: Immutable.Set<Immutable.Set<string>> = ImmutableSet();
+    for (var x of this.relations)
+    {
+        newRelations = newRelations.add(x.filter(v => variables.includes(v)));
+        
+    }
+    
+    newRelations = newRelations.filter(r => r.size > 1);
+    return new MayAlias(newRelations);
+  }
+  addRelation(lv: string,rv: string): MayAlias
+  {
+          const lv_name =  lv
+          const rv_name = rv
+
+          let variables = this.relations.flatten();
+          
+          const lvHasAlias = variables.includes(lv_name);
+          const rvHasAlias = variables.includes(rv_name);
+        
+          let newAliasRelations : Immutable.Set<Immutable.Set<string>> =  ImmutableSet();
+
+          if(!lvHasAlias&&!rvHasAlias)
+          {
+            let newAliasCouple =  Immutable.Set.of(lv_name,rv_name).sort();
+            newAliasRelations = this.relations.add(newAliasCouple);
+          }
+          else if(!lvHasAlias&&rvHasAlias)
+          {
+            this.relations.forEach(r => {      
+              if (r.includes(rv_name)){r = r.add(lv_name);}
+              newAliasRelations = newAliasRelations.add(r.sort());
+            })
+          }
+          else if(lvHasAlias&&!rvHasAlias)
+          {
+            this.relations.forEach(r => {
+              if( r.includes(lv_name)){r = r.delete(lv_name)}
+              newAliasRelations = newAliasRelations.add(r.sort());
+            })
+            const newAliasCouple = ImmutableSet.of(lv_name,rv_name).sort();
+            newAliasRelations = newAliasRelations.add(newAliasCouple);
+          }
+          else
+          { 
+            this.relations.forEach(r => {
+              let newRelation = r;
+              if(r.includes(lv_name)){newRelation = newRelation.delete(lv_name);}
+              if (r.includes(rv_name)){newRelation = newRelation.add(lv_name);}
+              newAliasRelations = newAliasRelations.add(newRelation.sort());
+            })
+            newAliasRelations = this.filterRelations(newAliasRelations);
+          }
+          newAliasRelations =  newAliasRelations.filter(e => e.size>1) 
+          return new MayAlias(newAliasRelations);
+  }
+  filterRelations(combinedRelations: Immutable.Set<Immutable.Set<string>>)
+  {
+    let combinedUniqueRelations : Immutable.Set<Immutable.Set<string>> =  ImmutableSet();
+    
+    for(var newRelation of combinedRelations)
+    {
+      let relationsToDelete : Immutable.Set<Immutable.Set<string>> =  ImmutableSet();
+      let isNewRelationUnqiue = true;
+      for(var uniqueRelation of combinedUniqueRelations)
+      {
+        if(newRelation.every(v => uniqueRelation.includes(v))){isNewRelationUnqiue = false;}
+        else if(uniqueRelation.every(v => newRelation.includes(v))){relationsToDelete = relationsToDelete.add(uniqueRelation);}
+      }
+      if (isNewRelationUnqiue){
+        combinedUniqueRelations = combinedUniqueRelations.add(newRelation);
+
+
+        let newcombinedUniqueRelations : Immutable.Set<Immutable.Set<string>> =  ImmutableSet();
+        for(var combinedUniqueRelation of combinedUniqueRelations)
+        {
+          if(!relationsToDelete.includes(combinedUniqueRelation)){newcombinedUniqueRelations = newcombinedUniqueRelations.add(combinedUniqueRelation);}
+        }
+        combinedUniqueRelations = newcombinedUniqueRelations;
+        relationsToDelete = ImmutableSet();
+      }
+    }
+    return combinedUniqueRelations;
+
+  }
+  
+  combine(o:MayAlias): MayAlias{
+    let combinedRelations = this.relations.concat(o.relations);
+    const resultRelations = this.filterRelations(combinedRelations);
+    return new MayAlias(resultRelations);
+    
+  }
+  copy(): MayAlias{
+    return new MayAlias(this.relations);
+  } 
+}
+
+
+
 
 abstract class Statement extends ASTNode {
+  mayAliasRelations: MayAlias;
   constructor(loc: Loc, instrLoc: Loc) {
     super(loc, instrLoc);
+    this.mayAliasRelations = new MayAlias();
   }
   abstract check(env: Scope): void
   abstract execute(env: Scope): Promise<Value>
@@ -1981,6 +2114,13 @@ function parseProofOutline(stmts: Statement[], i: number, precededByAssert: bool
     const x = lhs_target.getProofOutlineVariable(() => {
       return stmt.executionError(`Toekenningen aan variabelen van het type ${lhs.type} worden nog niet ondersteund.`);
     });
+
+    const previousStatement = stmts[i-1]; 
+    if(preConditionHasAlias(previousStatement as AssertStatement,stmt)){
+      const name = (((stmt.expr as AssignmentExpression).lhs as SubscriptExpression).target as VariableExpression).name;
+      return stmt.expr.executionError(`Deze opdracht die het list-object ${name} muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als ${name}`);
+
+    }
     let zeroIntLiteral = new IntLiteral(stmt.loc,0);
     zeroIntLiteral.type = intType;
     
@@ -2030,7 +2170,243 @@ function parseProofOutline(stmts: Statement[], i: number, precededByAssert: bool
     return stmt.executionError("Deze vorm van opdracht wordt nog niet ondersteund in een bewijssilhouet.");
 }
 
+function collectVarsInAssertStatement(expr: Expression): string[]{
+  let collectedVars : string[] =  [];
+  if(expr instanceof BinaryOperatorExpression && expr.operator == "&&")
+  {
+    return collectedVars.concat(collectVarsInAssertStatement(expr.leftOperand)).concat(collectVarsInAssertStatement(expr.rightOperand));
+  }
+  else if(expr instanceof BinaryOperatorExpression && expr.operator == "==")
+  {
+    if(expr.leftOperand instanceof SubscriptExpression && expr.leftOperand.target instanceof VariableExpression){
+      collectedVars.push(expr.leftOperand.target.name)
+    }
+    else if(expr.leftOperand instanceof VariableExpression){
+      collectedVars.push(expr.leftOperand.name)
+    }
+    else if(expr.leftOperand instanceof LenExpression && expr.leftOperand.target instanceof VariableExpression){
+      collectedVars.push(expr.leftOperand.target.name)
+    }
+  }
+  return collectedVars;
+
+
+}
+
+function preConditionHasAlias(astmt: AssertStatement,stmt: ExpressionStatement){
+  let aliasesOfStmt = ImmutableSet();
+  if(stmt.expr instanceof AssignmentExpression){
+    if (stmt.expr.lhs instanceof SubscriptExpression){
+      if(stmt.expr.lhs.target instanceof VariableExpression ){
+        const name = stmt.expr.lhs.target.name;
+        let relationsOfName : Immutable.Set<Immutable.Set<string>> =  ImmutableSet();
+        stmt.mayAliasRelations.relations.forEach(r => {
+              if( r.includes(name)){
+                r = r.delete(name)
+                relationsOfName = relationsOfName.add(r);
+              }
+            })
+        aliasesOfStmt = relationsOfName.flatten().toSet();
+      }
+    }
+
+  }
+
+  let varsInAssertStmt = []
+  varsInAssertStmt = collectVarsInAssertStatement(astmt.condition);
+  // if(astmt.condition instanceof BinaryOperatorExpression){
+
+  //   let leftOperand = astmt.condition.leftOperand;
+  //   let rightOperand = astmt.condition.rightOperand;
+  //   let operator = astmt.condition.operator;
+
+  //   // (b[:0] + [5] + b[0+1:])[0] == 5 and a[0] == 1
+  //   // operator = &&
+  //   // leftoperand = (b[:0] + [5] + b[0+1:])[0] == 5 
+  //     //with leftoperander.leftoperand = (b[:0] + [5] + b[0+1:])[0] 
+  //     //     leftoperand.rightoperand = 5
+
+  //  // rightoperand = a[0] == 1 
+  //     //with rightoperand.leftoperand
+
+
+  //     //TODO recursieve methode
+  //    while (operator == "&&")
+  //    {  
+        
+  //       if(leftOperand instanceof BinaryOperatorExpression && leftOperand.leftOperand instanceof SubscriptExpression && leftOperand.leftOperand.target instanceof VariableExpression && leftOperand.operator == "=="){
+  //         varsInAssertStmt.push(leftOperand.leftOperand.target.name);
+  //       }
+  //       else if(leftOperand instanceof BinaryOperatorExpression && leftOperand.leftOperand instanceof VariableExpression && leftOperand.operator == "=="){
+  //         varsInAssertStmt.push(leftOperand.leftOperand.name);
+  //       }
+  //       else if(leftOperand instanceof BinaryOperatorExpression && leftOperand.leftOperand instanceof LenExpression && leftOperand.leftOperand.target instanceof VariableExpression){
+          
+  //           varsInAssertStmt.push(leftOperand.leftOperand.target.name);
+          
+  //       }
+
+  //       if(rightOperand instanceof BinaryOperatorExpression && rightOperand.operator == "&&"){
+  //         operator = rightOperand.operator;
+  //         leftOperand = rightOperand.leftOperand;
+  //         rightOperand = rightOperand.rightOperand;
+  //       }
+  //       else{
+  //         operator = "endWhileLus"
+  //         if(rightOperand instanceof BinaryOperatorExpression){
+  //           if(rightOperand.leftOperand instanceof SubscriptExpression && rightOperand.leftOperand.target instanceof VariableExpression){
+  //             varsInAssertStmt.push(rightOperand.leftOperand.target.name);
+  //           }
+  //           else if(rightOperand.leftOperand instanceof VariableExpression){
+  //             varsInAssertStmt.push(rightOperand.leftOperand.name);
+  //           }
+  //           else if(rightOperand.leftOperand instanceof LenExpression){
+  //             if(rightOperand.leftOperand.target instanceof VariableExpression)
+  //             {
+  //               varsInAssertStmt.push(rightOperand.leftOperand.target.name);
+  //             }
+  //           }
+
+  //         }
+
+          
+  //       }
+        
+       
+  //    }
+  // }
+  let hasAlias = false;
+  varsInAssertStmt.forEach(e => {
+    if(aliasesOfStmt.includes(e)){
+      hasAlias = true;
+    }
+  })
+  return hasAlias
+
+}
+function outerScopeBindingVariables(outerScope : Scope): string[]
+{
+  const bindings = outerScope!.bindings;
+  const outerscopeVars = [];
+  
+  for (var x in bindings)
+  {
+    outerscopeVars.push(x);
+  }
+  
+  
+  if(outerScope.outerScope != null)
+  {
+    return outerscopeVars.concat(outerScopeBindingVariables(outerScope.outerScope))
+  }
+  return outerscopeVars;
+}
+
+function performAliasAnalysis(stmts: Statement[], i: number, previousStatementMaybeAlias: MayAlias) : MayAlias
+{
+  
+  
+  if (!(stmts.length == i))
+  {
+
+    let stmt = stmts[i];
+    stmt.mayAliasRelations = previousStatementMaybeAlias;
+
+    if (stmt instanceof AssertStatement){
+      return performAliasAnalysis(stmts,i+1,stmt.mayAliasRelations);
+    }
+    
+    else if(stmt instanceof ExpressionStatement ){
+      if(stmt.expr instanceof AssignmentExpression && stmt.expr.op == '=' && stmt.expr.lhs instanceof VariableExpression){
+       
+        let newAliasRelations : MayAlias
+        if(stmt.expr.rhs instanceof VariableExpression){
+          stmt.mayAliasRelations = stmt.mayAliasRelations.addRelation(stmt.expr.lhs.name,stmt.expr.rhs.name);
+          return performAliasAnalysis(stmts,i+1,stmt.mayAliasRelations);
+        }
+        else
+        {
+          
+          stmt.mayAliasRelations = stmt.mayAliasRelations.removeVariableInRelations(stmt.expr.lhs.name);
+          return performAliasAnalysis(stmts,i+1,stmt.mayAliasRelations);
+          
+        }
+        
+        
+      }
+      else{
+        return performAliasAnalysis(stmts,i+1,stmt.mayAliasRelations);
+      }
+    }
+    
+    else if(stmt instanceof IfStatement){
+        if(stmt.thenBody instanceof BlockStatement && stmt.elseBody instanceof BlockStatement &&  stmt.elseBody != null && stmt.thenBody != null){
+        
+        const stmtsThenBlock = stmt.thenBody.stmts;
+        const stmtsElseBlock = stmt.elseBody.stmts;
+        
+        
+        const stmt_mayAliasRelationsThen = stmt.mayAliasRelations.copy();
+        const stmt_mayAliasRelationsElse = stmt.mayAliasRelations.copy();
+        let maybeAliasThenBlock = performAliasAnalysis(stmtsThenBlock,0,stmt_mayAliasRelationsThen)!;
+        let maybeAliasElseBlock = performAliasAnalysis(stmtsElseBlock,0,stmt_mayAliasRelationsElse)!;
+        const thenSet = maybeAliasThenBlock.relations.toJS();
+        const elseSet = maybeAliasElseBlock.relations.toJS()
+        if(maybeAliasThenBlock&&maybeAliasElseBlock)
+        {
+          const outerscope = stmt.thenBody.scope!.outerScope!
+          const outerscopeVars = outerScopeBindingVariables(outerscope);
+          const mayAliasLocalVariablesIfRemoved = maybeAliasThenBlock.keepRelationsWithVariables(outerscopeVars);
+          const mayAliasLocalVariablesElseRemoved = maybeAliasElseBlock.keepRelationsWithVariables(outerscopeVars);
+          let combinedMaybeAlias = mayAliasLocalVariablesIfRemoved.combine(mayAliasLocalVariablesElseRemoved);
+          return performAliasAnalysis(stmts,i+1,combinedMaybeAlias);
+        }
+        else
+        {
+          return performAliasAnalysis(stmts,i+1,stmt.mayAliasRelations);
+        }
+      }
+      
+
+    }
+    
+    else if(stmt instanceof WhileStatement){
+      if (stmt.body instanceof BlockStatement && stmt.body != null){
+        const stmtsBodyBlock = stmt.body.stmts;
+       
+
+        let maybeAliasAnalysisWhileBlock = performAliasAnalysis(stmtsBodyBlock,0,stmt.mayAliasRelations);
+        let maybeAliasAnalysisWhileBlockCheck = performAliasAnalysis(stmtsBodyBlock,0,stmt.mayAliasRelations);
+        while (maybeAliasAnalysisWhileBlock.relations.toJS().toString() != maybeAliasAnalysisWhileBlockCheck.relations.toJS().toString())
+        {
+          maybeAliasAnalysisWhileBlockCheck = performAliasAnalysis(stmtsBodyBlock,0,stmt.mayAliasRelations);
+        }
+        if(maybeAliasAnalysisWhileBlock&&maybeAliasAnalysisWhileBlockCheck)
+        {
+          const outerscope = stmt.body.scope!.outerScope!
+          const outerscopeVars = outerScopeBindingVariables(outerscope);
+          const mayAliasLocalVariablesRemoved = maybeAliasAnalysisWhileBlock.keepRelationsWithVariables(outerscopeVars);
+          return performAliasAnalysis(stmts,i+1,mayAliasLocalVariablesRemoved);
+        }
+        
+
+      }
+    }
+    return performAliasAnalysis(stmts,i+1,stmt.mayAliasRelations);
+    
+    
+  }
+  else{
+    return previousStatementMaybeAlias;
+  }
+  
+}
+
+
+
 function checkProofOutline(checkEntailments: boolean, total: boolean, env: Env_, stmts: Statement[]) {
+  const aliasAnalysis = performAliasAnalysis(stmts,0,new MayAlias());
+  const set = aliasAnalysis.relations.toJS();
   const outline = parseProofOutline(stmts, 0, false);
   if (!stmt_is_well_typed(env, outline))
     throw new LocError(new Loc(stmts[0].loc.doc, stmts[0].loc.start, stmts[stmts.length - 1].loc.end), "Het bewijssilhouet voldoet niet aan de typeregels");
@@ -4713,8 +5089,353 @@ assert fibonacci(4) == 3
 assert fibonacci(5) == 5
 assert fibonacci(6) == 8`,
 expression: `fibonacci(7)`
-}
-]
+},
+{
+  title: 'Simple alias example',
+  declarations: 
+  `def method():
+
+  assert [1] == [1] # PRECONDITIE
+  a = [1]
+  assert a == [1]
+  assert a == a
+  b = a
+  assert b == a # POSTCONDITIE
+
+`,
+statements: 
+``,
+expression: ``
+},
+{
+  title: 'breaking alias example',
+  declarations: 
+  `def method():
+  assert [0] == [0] # PRECONDITIE
+  a = [0]
+  assert a == [0]
+  assert [1] == [1]
+  b = [1]
+  assert b == [1]
+  assert [1] == [1]
+  c = [1]
+  assert c == [1] 
+  assert a == a 
+  b = a
+  assert b == a 
+  assert [0] == [0] 
+  a = [0]
+  assert a == [0] # POSTCONDITIE
+`,
+statements: 
+``,
+expression: ``
+},
+{
+  title: 'while lus alias example',
+  declarations: 
+  `def methode():
+    i = 0
+    n = 3
+    a = [1]
+    b = [5]
+    while  i < n:
+      b = a
+      i = i + 1
+
+`,
+statements: 
+``,
+expression: ``
+},
+{
+  title: 'if statement with different aliases example',
+  declarations: 
+  `def method():
+    assert [0] == [0] # PRECONDITIE
+    a = [0]
+    assert a == [0]
+    assert [1] == [1]
+    b = [1]
+    assert b == [1]
+    assert [1] == [1]
+    c = [1]
+    assert c == [1]
+    assert [1] == [1]
+    d = [1]
+    assert d == [1]
+    assert True 
+    if len(b) == 1:
+      assert True  and len(b) == 1
+      assert a == a
+      b=a
+      assert b == a
+      assert d == d
+      c=d
+      assert c == d
+      assert True 
+    else:
+      assert True  and not len(b) == 1
+      assert a == a
+      b=a
+      assert b == a
+      assert a == a
+      c=a
+      assert c == a
+      assert a == a
+      d=a
+      assert d == a    
+      assert True
+    assert True # POSTCONDITIE
+    
+
+  `,
+  statements: 
+  ``,
+  expression: ``
+  },
+  {
+    title: 'Correct use of aliasing',
+    declarations: 
+    `def method():
+      assert [0] == [0] # PRECONDITIE
+      a = [0]
+      assert a == [0]
+      assert [1] == [1]
+      b = [1]
+      assert b == [1]
+      assert True 
+      if len(b) == 1:
+        assert True  and len(b) == 1
+        assert a == a
+        d=a
+        assert d == a
+        assert True 
+      else:
+        assert True  and not len(b) == 1
+        assert a == a
+        d=a
+        assert d == a  
+        assert a == a
+        b=a
+        assert b == a
+        assert True
+      assert True
+      assert (b[:0] + [3] + b[0+1:])[0] == 3 # Uitgesteld
+      b[0] = 3
+      assert b[0] == 3  # POSTCONDITIE
+
+      # Wet Uitgesteld: b
+    `,
+    statements: 
+    ``,
+    expression: ``
+    }
+    ,
+    {
+      title: 'Aliasing while If statement in If statement',
+      declarations: 
+      `def method():
+      assert [0] == [0] # PRECONDITIE
+      a = [0]
+      assert a == [0]
+      assert [1] == [1]
+      b = [1]
+      assert b == [1]
+      assert [1] == [1]
+      c = [1]
+      assert c == [1]
+      assert [1] == [1]
+      d = [1]
+      assert d == [1]
+      assert True 
+      if len(b) == 1:
+        assert True  and len(b) == 1
+        assert a == a
+        b=a
+        assert b == a
+        assert True
+        if len(a) == 2:
+          assert True and len(a) == 2
+          assert d == d
+          c=d
+          assert c == d
+          assert True
+        else :
+          assert True and not len(a) == 2
+          assert a == a
+          c=a
+          assert c == a
+          assert True 
+        assert True
+        assert d == d
+        c=d
+        assert c == d
+        assert True 
+      else:
+        assert True  and not len(b) == 1
+        assert a == a
+        d=a
+        assert d == a   
+        assert True
+      assert True # POSTCONDITIE
+  
+      `,
+      statements: 
+      ``,
+      expression: ``
+      }
+      ,
+  ]
+const aliasViolationExampleIf = 
+  {
+    title: 'violation of aliasing rules',
+    declarations: 
+    `def method(x):
+    assert [0] == [0] # PRECONDITIE
+    a = [0]
+    assert a == [0]
+    assert [5] == [5]
+    b = [5]
+    assert b == [5]
+    assert True
+    if x == True:
+      assert True and x == True
+      assert a == a
+      d = a
+      assert d == a
+      assert True
+    else:
+      assert True and not x == True
+      assert a == a
+      d = a
+      assert d == a
+      assert a == a
+      b = a
+      assert b == a    
+      assert True
+    assert True
+    assert (b[:0] + [3] + b[0+1:])[0] == 3 and a[0] == 1 # Uitgesteld 
+    b[0] = 3
+    assert b[0] == 3 and  a[0] == 1 # POSTCONDITIE
+  # Wet Uitgesteld: b
+    `,
+    statements: 
+    ``,
+    expression: ``
+    };
+ const aliasViolationExampleWhileWithIf = 
+    {
+      title: 'violation of aliasing rules',
+      declarations: 
+      `def methode():
+      assert [8] == [8] #PRECONDITIE PARTIËLE CORRECTHEID
+      d = [8]
+      assert d == [8]
+      assert [4] == [4]
+      c = [4]
+      assert c == [4]
+      assert [1] == [1]
+      a = [1]
+      assert a == [1]
+      assert [5] == [5]
+      b = [5]
+      assert b == [5]
+      assert len(a) == 1 
+      while  a[0] != b[0]:
+          assert len(a) == 1 and a[0] != b[0]
+          assert True 
+          if a[0] < b[0]:
+            assert True and a[0] < b[0]
+            assert a[0] == a[0]
+            i = a[0]
+            assert i == a[0]
+            assert (a[:0] + [i+1] + a[0+1:])[0] == i + 1
+            a[0] = i + 1
+            assert a[0] == i + 1
+            assert True 
+          else:
+            assert True  and not a[0] < b[0]
+            assert b[0] == b[0]
+            i = b[0]
+            assert i == b[0]
+            assert (b[:0] + [i+1] + b[0+1:])[0] == i + 1
+            b[0] = i + 1
+            assert b[0] == i + 1
+            assert d == d
+            c = d
+            assert c == d
+            assert True
+          assert True
+          assert len(a) == 1   
+      assert len(a) == 1 and not a[0] != b[0]  
+      assert (d[:0] + [3] + d[0+1:])[0] == 5 and c[0] == 5 
+      d[0] = 5
+      assert d[0] == 5 and c[0] == 5 # POSTCONDITIE
+      return a[0]
+      `,
+      statements: 
+      ``,
+      expression: ``
+      };
+const aliasViolationExampleDoubleIfs = 
+    {
+      title: 'violation of aliasing rules',
+      declarations: 
+      `def method():
+      assert [0] == [0] # PRECONDITIE
+      a = [0]
+      assert a == [0]
+      assert [1] == [1]
+      b = [1]
+      assert b == [1]
+      assert [1] == [1]
+      c = [1]
+      assert c == [1]
+      assert [1] == [1]
+      d = [1]
+      assert d == [1]
+      assert True 
+      if len(b) == 1:
+        assert True  and len(b) == 1
+        assert a == a
+        b=a
+        assert b == a 
+        assert (b[:0] + [2] + b[0+1:])[0] == 2 and c[0] == 1 and len(d) == 1
+        b[0] = 2
+        assert b[0] == 2 and c[0] == 1 and len(d) == 1
+        assert True
+        if len(a) == 2:
+          assert True and len(a) == 2
+          assert d == d
+          c=d
+          assert c == d
+          assert True
+        else :
+          assert True and not len(a) == 2
+          assert a == a
+          c=a
+          assert c == a
+          assert True 
+        assert True
+        assert (c[:0] + [3] + c[0+1:])[0] == 3 and b[0] == 1
+        c[0] = 3
+        assert c[0] == 3 and b[0] == 1
+        assert True 
+      else:
+        assert True  and not len(b) == 1
+        assert a == a
+        d=a
+        assert d == a   
+        assert True
+      assert True # POSTCONDITIE
+      `,
+      statements: 
+      ``,
+      expression: ``
+};
+
+
 
 function setExample(example: Example) {
   reset();
@@ -4765,7 +5486,189 @@ async function testExamples(examples: Example[]) {
   }
 }
 
+
+async function testAliasingViolationExample(example: Example,errorMessage: string,locStart:number,locEnd:number){
+  const {declarations, statements, expression} = example
+  let decls = parseDeclarations(mkLocFactory(declarations), declarations, processComment);
+  checkDeclarations(decls);
+
+  let stmts = parseStatements(mkLocFactory(statements), statements);
+  for (const stmt of stmts) {
+    if (await stmt.execute(toplevelScope) !== undefined)
+      break;
+  }
+
+  if (expression != '') {
+    let e = parseExpression(mkLocFactory(expression), expression);
+    await e.evaluate(toplevelScope);
+    let [v] = pop(1);
+  }
+
+  checkLaws();
+  try{
+    for (let m in toplevelMethods)
+    toplevelMethods[m].checkProofOutlines(true);
+  }
+  catch(error: any)
+  {
+    if(error.msg != errorMessage || error.loc.start != locStart || error.loc.end != locEnd)
+    {
+      throw new Error("Test alias violation case failed");
+    }
+    
+    
+  
+  } 
+
+}
+
+async function testAliasingViolationExamples() {
+  //await testParsingAndExecutingOfViolationExample(example); 
+  await testAliasingViolationExample(aliasViolationExampleIf,"Deze opdracht die het list-object b muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als b",541,542);
+  await testAliasingViolationExample(aliasViolationExampleDoubleIfs,"Deze opdracht die het list-object c muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als c",954,955);
+  await testAliasingViolationExample(aliasViolationExampleWhileWithIf,"Deze opdracht die het list-object d muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als d",1224,1225);
+  
+  console.log("All alias violation error tests passed!")
+}
+
+
 declare var secretExamples: Example[]|undefined;
+
+async function runUnitTests() {
+
+  function assert(b: boolean) {
+    if (!b)
+      throw new Error("Test case assertion failed");
+  }
+  
+  let mayAlias = new MayAlias();
+  
+  // constructor
+  mayAlias = new MayAlias(ImmutableSet.of());
+  assert(mayAlias.relations.equals(ImmutableSet.of()));
+
+  mayAlias = new MayAlias(ImmutableSet.of(ImmutableSet.of("a","b")));
+  assert(mayAlias.relations.equals(new MayAlias(ImmutableSet.of(ImmutableSet.of("a","b"))).relations));
+  
+  mayAlias = new MayAlias(ImmutableSet.of(ImmutableSet.of("b","a","c"),ImmutableSet.of("d","e","c")));
+  assert(mayAlias.relations.equals(new MayAlias(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("c","d","e"))).relations));
+
+  // //addRelation
+  mayAlias = new MayAlias(ImmutableSet.of(ImmutableSet.of("a","b")));
+
+  mayAlias = mayAlias.addRelation("c","a");
+  assert(mayAlias.relations.equals(new MayAlias(ImmutableSet.of(ImmutableSet.of("a","b","c"))).relations));
+
+  mayAlias = mayAlias.addRelation("a","d");
+  assert(mayAlias.relations.equals(new MayAlias(ImmutableSet.of(ImmutableSet.of("b","c"),ImmutableSet.of("a","d"))).relations));
+
+  mayAlias = mayAlias.addRelation("b","c");
+  assert(mayAlias.relations.equals(new MayAlias(ImmutableSet.of(ImmutableSet.of("b","c"),ImmutableSet.of("a","d"))).relations));
+
+
+  mayAlias = mayAlias.addRelation("a","b");
+  assert(mayAlias.relations.equals(new MayAlias(ImmutableSet.of(ImmutableSet.of("a","b","c"))).relations));
+
+
+  mayAlias = mayAlias.addRelation("d","e");
+  assert(mayAlias.relations.equals(new MayAlias(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("d","e"))).relations));
+
+  mayAlias = new MayAlias(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("c","d")));
+  mayAlias = mayAlias.addRelation("c","d");
+  assert(mayAlias.relations.equals(new MayAlias(ImmutableSet.of(ImmutableSet.of("a","b"),ImmutableSet.of("c","d"))).relations));
+
+  mayAlias = mayAlias.addRelation("c","a");
+  assert(mayAlias.relations.equals(new MayAlias(ImmutableSet.of(ImmutableSet.of("a","b","c"))).relations));
+
+  mayAlias = new MayAlias(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("c","d"),ImmutableSet.of("a","d") ));
+  mayAlias = mayAlias.addRelation("a","d");
+  assert(mayAlias.relations.equals(new MayAlias(ImmutableSet.of(ImmutableSet.of("b","c"),ImmutableSet.of("a","c","d"))).relations));
+
+
+  //keep
+  mayAlias = new MayAlias(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("a","d")));
+  mayAlias = mayAlias.keepRelationsWithVariables(["a","b","c","d","result"]);
+  assert(mayAlias.relations.equals(new MayAlias(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("a","d"))).relations));
+
+
+  mayAlias = mayAlias.keepRelationsWithVariables(["b","c","d","result"]);
+  assert(mayAlias.relations.equals(new MayAlias(ImmutableSet.of(ImmutableSet.of("b","c"))).relations));
+
+
+  // //removeVariableInRelations
+  mayAlias = new MayAlias(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("a","d")));
+
+  mayAlias = mayAlias.removeVariableInRelations("e");
+  assert(mayAlias.relations.equals(new MayAlias(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("a","d"))).relations));
+
+
+  mayAlias = mayAlias.removeVariableInRelations("c");
+  assert(mayAlias.relations.equals(new MayAlias(ImmutableSet.of(ImmutableSet.of("a","b"),ImmutableSet.of("a","d"))).relations));
+
+
+  mayAlias = mayAlias.removeVariableInRelations("b");
+  assert(mayAlias.relations.equals(new MayAlias(ImmutableSet.of(ImmutableSet.of("a","d"))).relations));
+
+
+  //combine
+
+  mayAlias = new MayAlias(ImmutableSet.of());
+  let mayAliasToCombine = new MayAlias(ImmutableSet.of());
+  mayAlias = mayAlias.combine(mayAliasToCombine);
+  assert(mayAlias.relations.equals(new MayAlias(ImmutableSet.of()).relations));
+
+
+  mayAlias = new MayAlias(ImmutableSet.of(ImmutableSet.of("a","d")));
+  mayAliasToCombine = new MayAlias(ImmutableSet.of());
+  mayAlias = mayAlias.combine(mayAliasToCombine);
+  assert(mayAlias.relations.equals(new MayAlias(ImmutableSet.of(ImmutableSet.of("a","d"))).relations));
+
+
+  mayAlias = new MayAlias(ImmutableSet.of(ImmutableSet.of("a","d")));
+  mayAliasToCombine = new MayAlias(ImmutableSet.of(ImmutableSet.of("a","c")));
+  mayAlias = mayAlias.combine(mayAliasToCombine);
+  assert(mayAlias.relations.equals(new MayAlias(ImmutableSet.of(ImmutableSet.of("a","d"),ImmutableSet.of("a","c"))).relations));
+
+
+  mayAlias = new MayAlias(ImmutableSet.of(ImmutableSet.of("a","d")));
+  mayAliasToCombine = new MayAlias(ImmutableSet.of(ImmutableSet.of("a","c","d")));
+  mayAlias = mayAlias.combine(mayAliasToCombine);
+  assert(mayAlias.relations.equals(new MayAlias(ImmutableSet.of(ImmutableSet.of("a","c","d"))).relations));
+
+
+  mayAlias = new MayAlias(ImmutableSet.of(ImmutableSet.of("a","b","c","d")));
+  mayAliasToCombine = new MayAlias(ImmutableSet.of(ImmutableSet.of("a","d")));
+  mayAlias = mayAlias.combine(mayAliasToCombine);
+  assert(mayAlias.relations.equals(new MayAlias(ImmutableSet.of(ImmutableSet.of("a","b","c","d"))).relations));
+
+
+  mayAlias = new MayAlias(ImmutableSet.of(ImmutableSet.of("a","d"),ImmutableSet.of("b","d")));
+  mayAliasToCombine = new MayAlias(ImmutableSet.of(ImmutableSet.of("a","b","e")));
+  mayAlias = mayAlias.combine(mayAliasToCombine);
+  assert(mayAlias.relations.equals(new MayAlias(ImmutableSet.of(ImmutableSet.of("a","d"),ImmutableSet.of("b","d"),ImmutableSet.of("a","b","e"))).relations));
+
+  mayAlias = new MayAlias(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("b","d")));
+  mayAliasToCombine = new MayAlias(ImmutableSet.of(ImmutableSet.of("b","d"),ImmutableSet.of("a","b"),ImmutableSet.of("d","e")));
+  mayAlias = mayAlias.combine(mayAliasToCombine);
+  assert(mayAlias.relations.equals(new MayAlias(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("b","d"),ImmutableSet.of("d","e"))).relations));
+
+  mayAlias = new MayAlias(ImmutableSet.of(ImmutableSet.of("a","b","c")));
+  mayAliasToCombine = new MayAlias(ImmutableSet.of(ImmutableSet.of("a","b"),ImmutableSet.of("b","c"),ImmutableSet.of("d","e")));
+  mayAlias = mayAlias.combine(mayAliasToCombine);
+  assert(mayAlias.relations.equals(new MayAlias(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("d","e"))).relations));
+
+  mayAlias = new MayAlias(ImmutableSet.of(ImmutableSet.of("a","b"),ImmutableSet.of("b","c")));
+  mayAliasToCombine = new MayAlias(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("d","e")));
+  mayAlias = mayAlias.combine(mayAliasToCombine);
+  assert(mayAlias.relations.equals(new MayAlias(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("d","e"))).relations));
+
+  //copy
+  mayAlias = new MayAlias(ImmutableSet.of(ImmutableSet.of("a","d"),ImmutableSet.of("b","d")));
+  mayAlias = mayAlias.copy()
+  assert(mayAlias.relations.equals(new MayAlias(ImmutableSet.of(ImmutableSet.of("a","d"),ImmutableSet.of("b","d"))).relations));
+
+  console.log("All Unit tests passed!")
+}
 
 const hiddenTests = [
   {
@@ -4785,6 +5688,8 @@ async function testPyLearner() {
     await testExamples(secretExamples);
     console.log('All secret tests passed!');
   }
+  await testAliasingViolationExamples();
+  runUnitTests();
 }
 
 if (typeof window === 'undefined') // We're being executed by Node.js.

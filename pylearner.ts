@@ -1380,11 +1380,12 @@ class MayAlias {
     return new MayAlias(newRelations);
 
   }
-  keepRelationsWithVariables(variables:string[]){
+  keepRelationsWithVariables(variables:Immutable.Set<string>){
     let newRelations: Immutable.Set<Immutable.Set<string>> = ImmutableSet();
-    for (var x of this.relations)
+    for (var relation of this.relations)
     {
-        newRelations = newRelations.add(x.filter(v => variables.includes(v)));
+      const relationWithKeepedVariables = relation.filter(v => variables.includes(v));
+      newRelations = newRelations.add(relationWithKeepedVariables);
         
     }
     
@@ -2170,135 +2171,91 @@ function parseProofOutline(stmts: Statement[], i: number, precededByAssert: bool
     return stmt.executionError("Deze vorm van opdracht wordt nog niet ondersteund in een bewijssilhouet.");
 }
 
-function collectVarsInAssertStatement(expr: Expression): string[]{
-  let collectedVars : string[] =  [];
-  if(expr instanceof BinaryOperatorExpression && expr.operator == "&&")
+function collectVariablesInExpression(expr: Expression): Immutable.Set<string>{
+  let collectedVars : Immutable.Set<string> =  ImmutableSet();
+
+  if(expr instanceof BinaryOperatorExpression)
   {
-    return collectedVars.concat(collectVarsInAssertStatement(expr.leftOperand)).concat(collectVarsInAssertStatement(expr.rightOperand));
+    return collectVariablesInExpression(expr.leftOperand).concat(collectVariablesInExpression(expr.rightOperand));
   }
-  else if(expr instanceof BinaryOperatorExpression && expr.operator == "==")
+  else if(expr instanceof SubscriptExpression) {
+    return collectVariablesInExpression(expr.target).concat(collectVariablesInExpression(expr.index));
+  }
+  else if(expr instanceof LenExpression){
+    return collectVariablesInExpression(expr.target);
+  }
+  else if(expr instanceof SliceExpression){
+    return collectVariablesInExpression(expr.target).concat(collectVariablesInExpression(expr.startIndex)).concat(collectVariablesInExpression(expr.endIndex)); 
+  }
+  else if (expr instanceof CallExpression)
   {
-    if(expr.leftOperand instanceof SubscriptExpression && expr.leftOperand.target instanceof VariableExpression){
-      collectedVars.push(expr.leftOperand.target.name)
-    }
-    else if(expr.leftOperand instanceof VariableExpression){
-      collectedVars.push(expr.leftOperand.name)
-    }
-    else if(expr.leftOperand instanceof LenExpression && expr.leftOperand.target instanceof VariableExpression){
-      collectedVars.push(expr.leftOperand.target.name)
-    }
+    expr.arguments.forEach(subExpr => {
+      const collectVarsInArgument =  collectVariablesInExpression(subExpr)
+      collectedVars = collectedVars.concat(collectVarsInArgument);
+    });
   }
+  else if (expr instanceof UnaryOperatorExpression)
+  {
+    return collectVariablesInExpression(expr.operand);
+  }
+  else if(expr instanceof VariableExpression){
+    collectedVars = collectedVars.add(expr.name);
+  }
+  
   return collectedVars;
 
 
 }
 
 function preConditionHasAlias(astmt: AssertStatement,stmt: ExpressionStatement){
+  let varsInAssertStmt = ImmutableSet();
   let aliasesOfStmt = ImmutableSet();
   if(stmt.expr instanceof AssignmentExpression){
     if (stmt.expr.lhs instanceof SubscriptExpression){
       if(stmt.expr.lhs.target instanceof VariableExpression ){
         const name = stmt.expr.lhs.target.name;
         let relationsOfName : Immutable.Set<Immutable.Set<string>> =  ImmutableSet();
-        stmt.mayAliasRelations.relations.forEach(r => {
-              if( r.includes(name)){
-                r = r.delete(name)
-                relationsOfName = relationsOfName.add(r);
-              }
+        stmt.mayAliasRelations.relations.forEach(r => {             
+                relationsOfName = relationsOfName.add(r); 
             })
-        aliasesOfStmt = relationsOfName.flatten().toSet();
+        aliasesOfStmt = relationsOfName.flatten().toSet().delete(name);
+        varsInAssertStmt = collectVariablesInExpression(astmt.condition).delete(name);
       }
     }
 
   }
 
-  let varsInAssertStmt = []
-  varsInAssertStmt = collectVarsInAssertStatement(astmt.condition);
-  // if(astmt.condition instanceof BinaryOperatorExpression){
-
-  //   let leftOperand = astmt.condition.leftOperand;
-  //   let rightOperand = astmt.condition.rightOperand;
-  //   let operator = astmt.condition.operator;
-
-  //   // (b[:0] + [5] + b[0+1:])[0] == 5 and a[0] == 1
-  //   // operator = &&
-  //   // leftoperand = (b[:0] + [5] + b[0+1:])[0] == 5 
-  //     //with leftoperander.leftoperand = (b[:0] + [5] + b[0+1:])[0] 
-  //     //     leftoperand.rightoperand = 5
-
-  //  // rightoperand = a[0] == 1 
-  //     //with rightoperand.leftoperand
-
-
-  //     //TODO recursieve methode
-  //    while (operator == "&&")
-  //    {  
-        
-  //       if(leftOperand instanceof BinaryOperatorExpression && leftOperand.leftOperand instanceof SubscriptExpression && leftOperand.leftOperand.target instanceof VariableExpression && leftOperand.operator == "=="){
-  //         varsInAssertStmt.push(leftOperand.leftOperand.target.name);
-  //       }
-  //       else if(leftOperand instanceof BinaryOperatorExpression && leftOperand.leftOperand instanceof VariableExpression && leftOperand.operator == "=="){
-  //         varsInAssertStmt.push(leftOperand.leftOperand.name);
-  //       }
-  //       else if(leftOperand instanceof BinaryOperatorExpression && leftOperand.leftOperand instanceof LenExpression && leftOperand.leftOperand.target instanceof VariableExpression){
-          
-  //           varsInAssertStmt.push(leftOperand.leftOperand.target.name);
-          
-  //       }
-
-  //       if(rightOperand instanceof BinaryOperatorExpression && rightOperand.operator == "&&"){
-  //         operator = rightOperand.operator;
-  //         leftOperand = rightOperand.leftOperand;
-  //         rightOperand = rightOperand.rightOperand;
-  //       }
-  //       else{
-  //         operator = "endWhileLus"
-  //         if(rightOperand instanceof BinaryOperatorExpression){
-  //           if(rightOperand.leftOperand instanceof SubscriptExpression && rightOperand.leftOperand.target instanceof VariableExpression){
-  //             varsInAssertStmt.push(rightOperand.leftOperand.target.name);
-  //           }
-  //           else if(rightOperand.leftOperand instanceof VariableExpression){
-  //             varsInAssertStmt.push(rightOperand.leftOperand.name);
-  //           }
-  //           else if(rightOperand.leftOperand instanceof LenExpression){
-  //             if(rightOperand.leftOperand.target instanceof VariableExpression)
-  //             {
-  //               varsInAssertStmt.push(rightOperand.leftOperand.target.name);
-  //             }
-  //           }
-
-  //         }
-
-          
-  //       }
-        
-       
-  //    }
-  // }
   let hasAlias = false;
   varsInAssertStmt.forEach(e => {
     if(aliasesOfStmt.includes(e)){
-      hasAlias = true;
+       hasAlias = true;
     }
   })
-  return hasAlias
+  return hasAlias;
 
 }
-function outerScopeBindingVariables(outerScope : Scope): string[]
+
+function getLocalVariablesInScope(scope: Scope): Immutable.Set<string>
 {
+  let localVars : Immutable.Set<string> =  ImmutableSet();
+  const bindings = scope!.bindings;
+  for (var x in bindings){
+    localVars = localVars.add(x);}
+  return localVars;
+
+}
+function getOuterScopeVariables(outerScope : Scope): Immutable.Set<string>
+{
+  let outerscopeVars : Immutable.Set<string> =  ImmutableSet();
+ 
   const bindings = outerScope!.bindings;
-  const outerscopeVars = [];
   
-  for (var x in bindings)
-  {
-    outerscopeVars.push(x);
-  }
+    
+  for (var x in bindings){
+    outerscopeVars = outerscopeVars.add(x);}
   
   
-  if(outerScope.outerScope != null)
-  {
-    return outerscopeVars.concat(outerScopeBindingVariables(outerScope.outerScope))
-  }
+  if(outerScope.outerScope != null){return outerscopeVars.concat(getOuterScopeVariables(outerScope.outerScope))}
   return outerscopeVars;
 }
 
@@ -2319,20 +2276,15 @@ function performAliasAnalysis(stmts: Statement[], i: number, previousStatementMa
     else if(stmt instanceof ExpressionStatement ){
       if(stmt.expr instanceof AssignmentExpression && stmt.expr.op == '=' && stmt.expr.lhs instanceof VariableExpression){
        
-        let newAliasRelations : MayAlias
         if(stmt.expr.rhs instanceof VariableExpression){
           stmt.mayAliasRelations = stmt.mayAliasRelations.addRelation(stmt.expr.lhs.name,stmt.expr.rhs.name);
           return performAliasAnalysis(stmts,i+1,stmt.mayAliasRelations);
         }
         else
-        {
-          
+        {    
           stmt.mayAliasRelations = stmt.mayAliasRelations.removeVariableInRelations(stmt.expr.lhs.name);
           return performAliasAnalysis(stmts,i+1,stmt.mayAliasRelations);
-          
         }
-        
-        
       }
       else{
         return performAliasAnalysis(stmts,i+1,stmt.mayAliasRelations);
@@ -2350,14 +2302,19 @@ function performAliasAnalysis(stmts: Statement[], i: number, previousStatementMa
         const stmt_mayAliasRelationsElse = stmt.mayAliasRelations.copy();
         let maybeAliasThenBlock = performAliasAnalysis(stmtsThenBlock,0,stmt_mayAliasRelationsThen)!;
         let maybeAliasElseBlock = performAliasAnalysis(stmtsElseBlock,0,stmt_mayAliasRelationsElse)!;
-        const thenSet = maybeAliasThenBlock.relations.toJS();
-        const elseSet = maybeAliasElseBlock.relations.toJS()
+    
         if(maybeAliasThenBlock&&maybeAliasElseBlock)
         {
-          const outerscope = stmt.thenBody.scope!.outerScope!
-          const outerscopeVars = outerScopeBindingVariables(outerscope);
-          const mayAliasLocalVariablesIfRemoved = maybeAliasThenBlock.keepRelationsWithVariables(outerscopeVars);
-          const mayAliasLocalVariablesElseRemoved = maybeAliasElseBlock.keepRelationsWithVariables(outerscopeVars);
+          
+          const scopeThenBody = stmt.thenBody.scope!
+          const localVars = getLocalVariablesInScope(scopeThenBody);
+          
+          const outerscopeVars = getOuterScopeVariables(scopeThenBody.outerScope!);
+          
+          let varsToKeep = outerscopeVars.subtract(localVars);
+          const mayAliasLocalVariablesIfRemoved = maybeAliasThenBlock.keepRelationsWithVariables(varsToKeep);
+          const mayAliasLocalVariablesElseRemoved = maybeAliasElseBlock.keepRelationsWithVariables(varsToKeep);
+
           let combinedMaybeAlias = mayAliasLocalVariablesIfRemoved.combine(mayAliasLocalVariablesElseRemoved);
           return performAliasAnalysis(stmts,i+1,combinedMaybeAlias);
         }
@@ -2376,16 +2333,21 @@ function performAliasAnalysis(stmts: Statement[], i: number, previousStatementMa
        
 
         let maybeAliasAnalysisWhileBlock = performAliasAnalysis(stmtsBodyBlock,0,stmt.mayAliasRelations);
-        let maybeAliasAnalysisWhileBlockCheck = performAliasAnalysis(stmtsBodyBlock,0,stmt.mayAliasRelations);
+        let maybeAliasAnalysisWhileBlockCheck = performAliasAnalysis(stmtsBodyBlock,0,maybeAliasAnalysisWhileBlock);
         while (maybeAliasAnalysisWhileBlock.relations.toJS().toString() != maybeAliasAnalysisWhileBlockCheck.relations.toJS().toString())
         {
-          maybeAliasAnalysisWhileBlockCheck = performAliasAnalysis(stmtsBodyBlock,0,stmt.mayAliasRelations);
+          maybeAliasAnalysisWhileBlock = maybeAliasAnalysisWhileBlockCheck;
+          maybeAliasAnalysisWhileBlockCheck = performAliasAnalysis(stmtsBodyBlock,0,maybeAliasAnalysisWhileBlock);
         }
         if(maybeAliasAnalysisWhileBlock&&maybeAliasAnalysisWhileBlockCheck)
         {
-          const outerscope = stmt.body.scope!.outerScope!
-          const outerscopeVars = outerScopeBindingVariables(outerscope);
-          const mayAliasLocalVariablesRemoved = maybeAliasAnalysisWhileBlock.keepRelationsWithVariables(outerscopeVars);
+          const scope = stmt.body.scope
+          const localVars = getLocalVariablesInScope(scope!);
+          const outerscopeVars = getOuterScopeVariables(scope!.outerScope!);
+          let varsToKeep = outerscopeVars.subtract(localVars);
+          
+          const mayAliasLocalVariablesRemoved = maybeAliasAnalysisWhileBlock.keepRelationsWithVariables(varsToKeep);
+    
           return performAliasAnalysis(stmts,i+1,mayAliasLocalVariablesRemoved);
         }
         
@@ -2406,7 +2368,6 @@ function performAliasAnalysis(stmts: Statement[], i: number, previousStatementMa
 
 function checkProofOutline(checkEntailments: boolean, total: boolean, env: Env_, stmts: Statement[]) {
   const aliasAnalysis = performAliasAnalysis(stmts,0,new MayAlias());
-  const set = aliasAnalysis.relations.toJS();
   const outline = parseProofOutline(stmts, 0, false);
   if (!stmt_is_well_typed(env, outline))
     throw new LocError(new Loc(stmts[0].loc.doc, stmts[0].loc.start, stmts[stmts.length - 1].loc.end), "Het bewijssilhouet voldoet niet aan de typeregels");
@@ -5233,7 +5194,7 @@ expression: ``
     }
     ,
     {
-      title: 'Aliasing while If statement in If statement',
+      title: 'Aliasing with If statement in If statement',
       declarations: 
       `def method():
       assert [0] == [0] # PRECONDITIE
@@ -5286,10 +5247,183 @@ expression: ``
       expression: ``
       }
       ,
+      {
+        title: 'Aliasing with while statement full proof',
+        declarations: 
+        `def methode():
+        assert 0 == 0 #PRECONDITIE
+        i = 0
+        assert i == 0
+        assert 5 == 5
+        n = 5
+        assert n == 5
+        assert [5,5,5]== [5,5,5]
+        a = [5,5,5]
+        assert a == [5,5,5]
+        assert i <= n # Uitgesteld
+        while  i < n:
+          oude_variant = n - i
+          assert i <= n and i < n and n - i == oude_variant
+          assert i < n and n - i == oude_variant and n - (i + 1) < n - i # Z
+          assert i + 1 <= n and 0 <= n - (i + 1) < oude_variant # Z op 1 of Herschrijven met 2 in 3
+          i = i + 1
+          assert i <= n and 0 <= n - i < oude_variant
+          assert [5] == [5]
+          b = [5]
+          assert b == [5]
+          assert [5,5] == [5,5]
+          c = [5,5]
+          assert c == [5,5]
+          assert True
+          if i == 4:
+            assert True and i == 4
+            assert a == a
+            b = a
+            assert b == a
+            assert True
+          else: 
+            assert True and not i == 4
+            assert True 
+          assert True
+          assert (a[:1] + [1] + a[1+1:])[1] == 1 and len(c) == 2 #Uitgesteld
+          a[1] = 1 
+          assert a[1] == 1 and len(c) == 2
+          assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
+        assert i <= n and not i < n #POSTCONDITIE
+        
+        #Wet Uitgesteld : b
+    
+        `,
+        statements: 
+        ``,
+        expression: ``
+        },
+        {
+          title: 'Aliasing with double while loop',
+          declarations: 
+          `def methode():
+          assert 0 == 0 #PRECONDITIE
+          i = 0
+          assert i == 0
+          assert 0 == 0
+          j = 0
+          assert j == 0
+          assert 5 == 5
+          n = 5
+          assert n == 5
+          assert [5,5,5]== [5,5,5]
+          a = [5,5,5]
+          assert a == [5,5,5]
+          assert i <= n # Uitgesteld
+          while  i < n:
+            oude_variant = n - i
+            assert i <= n and i < n and n - i == oude_variant
+            assert i < n and n - i == oude_variant and n - (i + 1) < n - i # Z
+            assert i + 1 <= n and 0 <= n - (i + 1) < oude_variant # Z op 1 of Herschrijven met 2 in 3
+            i = i + 1
+            assert i <= n and 0 <= n - i < oude_variant
+            assert [1,5,5]== [1,5,5]
+            b = [1,5,5]
+            assert b == [1,5,5]
+            assert j <= n # Uitgesteld
+            while  j < n:
+              oude_variant2 = n - j
+              assert j <= n and j < n and n - j == oude_variant2
+              assert j < n and n - j == oude_variant2 and n - (j + 1) < n - j # Z
+              assert j + 1 <= n and 0 <= n - (j + 1) < oude_variant2 # Z op 1 of Herschrijven met 2 in 3
+              j = j + 1
+              assert j <= n and 0 <= n - j < oude_variant2
+              assert a == a
+              c = a
+              assert c == a
+              assert True
+              if i == 4 and j == 1:
+                assert True and i == 4 and j == 1
+                assert [1,2,3] == [1,2,3]
+                c = [1,2,3]
+                assert c == [1,2,3]
+                assert True
+              else: 
+                assert True and not (i == 4 and j == 1)
+                assert True 
+              assert True
+              assert (a[:1] + [0] + a[1+1:])[1] == 0 and b[0] == 1 #Uitgesteld
+              a[1] = 0 
+              assert a[1] == 0 and b[0] == 1
+              assert j <= n and 0 <= n - j < oude_variant2 #Uitgesteld
+            assert j <= n and not j < n 
+            
+            assert [1,1,1] == [1,1,1]
+            d = [1,1,1]
+            assert d == [1,1,1]
+            assert (b[:1] + [0] + b[1+1:])[1] == 0 and d[0] == 1 #Uitgesteld
+            b[1] = 0 
+            assert b[1] == 0 and d[0] == 1
+            assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
+          assert i <= n and not i < n #POSTCONDITIE
+          
+          #Wet Uitgesteld : b
+        `,
+        statements: 
+        ``,
+        expression: ``
+        },
+        {
+          title: 'Aliasing with double while loop. Makes b and a aliases at end of biggest loop, but b is re-initialised every start of biggest loop. So there is no alias violation in smaller loop',
+          declarations: 
+          `def methode():
+          assert 0 == 0 #PRECONDITIE
+          i = 0
+          assert i == 0
+          assert 0 == 0
+          j = 0
+          assert j == 0
+          assert 5 == 5
+          n = 5
+          assert n == 5
+          assert [5,5,5]== [5,5,5]
+          a = [5,5,5]
+          assert a == [5,5,5]
+          assert i <= n # Uitgesteld
+          while  i < n:
+            oude_variant = n - i
+            assert i <= n and i < n and n - i == oude_variant
+            assert i < n and n - i == oude_variant and n - (i + 1) < n - i # Z
+            assert i + 1 <= n and 0 <= n - (i + 1) < oude_variant # Z op 1 of Herschrijven met 2 in 3
+            i = i + 1
+            assert i <= n and 0 <= n - i < oude_variant
+            assert [1,5,5]== [1,5,5]
+            b = [1,5,5]
+            assert b == [1,5,5]
+            assert j <= n # Uitgesteld
+            while  j < n:
+              oude_variant2 = n - j
+              assert j <= n and j < n and n - j == oude_variant2
+              assert j < n and n - j == oude_variant2 and n - (j + 1) < n - j # Z
+              assert j + 1 <= n and 0 <= n - (j + 1) < oude_variant2 # Z op 1 of Herschrijven met 2 in 3
+              j = j + 1
+              assert j <= n and 0 <= n - j < oude_variant2
+              assert (a[:1] + [0] + a[1+1:])[1] == 0 and b[0] == 1 #Uitgesteld
+              a[1] = 0 
+              assert a[1] == 0 and b[0] == 1
+              assert j <= n and 0 <= n - j < oude_variant2 #Uitgesteld
+            assert j <= n and not j < n
+            assert a == a
+            b = a
+            assert b == a
+            assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
+          assert i <= n and not i < n #POSTCONDITIE
+          
+          #Wet Uitgesteld : b
+        `,
+        statements: 
+        ``,
+        expression: ``
+        },
   ]
-const aliasViolationExampleIf = 
+const aliasViolationExampleIfLocalVariable = 
   {
-    title: 'violation of aliasing rules',
+    title: 'violation of aliasing rules IF',
     declarations: 
     `def method(x):
     assert [0] == [0] # PRECONDITIE
@@ -5326,7 +5460,7 @@ const aliasViolationExampleIf =
     };
  const aliasViolationExampleWhileWithIf = 
     {
-      title: 'violation of aliasing rules',
+      title: 'violation of aliasing rules WHILE IF',
       declarations: 
       `def methode():
       assert [8] == [8] #PRECONDITIE PARTIËLE CORRECTHEID
@@ -5378,9 +5512,41 @@ const aliasViolationExampleIf =
       ``,
       expression: ``
       };
+const aliasViolationExampleIfBasic = 
+      {
+        title: 'violation of aliasing rules IF',
+        declarations: 
+        `def method(x,y):
+        assert [0,2,3] == [0,2,3] # PRECONDITIE
+        a = [0,2,3]
+        assert a == [0,2,3]
+        assert  y == y
+        b = y
+        assert b == y
+        assert True
+        if x == True:
+          assert True and x == True
+          assert b == b
+          a = b
+          assert a == a    
+          assert True
+        else:
+          assert True and not x == True
+          assert True 
+        assert True
+        assert (a[:1] + [3] + a[1+1:])[1] == 3 and b[1] == 3 # Uitgesteld 
+        a[1] = 3
+        assert a[1] == 3 and b[1] == 3 # POSTCONDITIE
+        return a[0]
+      # Wet Uitgesteld: b
+        `,
+        statements: 
+        ``,
+        expression: ``
+        };
 const aliasViolationExampleDoubleIfs = 
     {
-      title: 'violation of aliasing rules',
+      title: 'violation of aliasing rules DOUBLE IF',
       declarations: 
       `def method():
       assert [0] == [0] # PRECONDITIE
@@ -5434,6 +5600,189 @@ const aliasViolationExampleDoubleIfs =
       ``,
       expression: ``
 };
+const aliasViolationExampleLocalVarsInWhile = 
+    {
+      title: 'violation of aliasing rules while lus with the local variables in while lus causing alias violation',
+      declarations: 
+      `def methode():
+      assert True #PRECONDITIE PARTIELE CORRECTHEID
+      assert 0 == 0
+      i = 0
+      assert i == i
+      assert True
+      while i == 0:
+        assert True and i == 0
+        assert [1,2,3] == [1,2,3]
+        a = [1,2,3]
+        assert a == [1,2,3]
+        assert a == a
+        b = a
+        assert b == a
+        assert (a[:i] + [5] + a[i+1:])[i] == 5 and b[i] == 5 # Uitgesteld
+        a[i] = 5
+        assert a[i] == 5 and b[i] == 5
+        assert 1 == 1
+        i = 1
+        assert i == 1
+        assert True
+      assert True and not i == 0 #POSTCONDITIE
+      # Wet Uitgesteld: b
+      `,
+      statements: 
+      ``,
+      expression: ``
+};
+const aliasViolationExampleViolationInLastLoopOfLus = 
+    {
+      title: 'violation of aliasing rules while lus with the last loop of the lus causing a alias violation',
+      declarations: 
+      `def methode():
+      assert 0 == 0 #PRECONDITIE
+      i = 0
+      assert i == 0
+      assert 5 == 5
+      n = 5
+      assert n == 5
+      assert [5,5,5]== [5,5,5]
+      a = [5,5,5]
+      assert a == [5,5,5]
+      assert i <= n # Uitgesteld
+      while  i < n:
+        oude_variant = n - i
+        assert i <= n and i < n and n - i == oude_variant
+        assert i < n and n - i == oude_variant and n - (i + 1) < n - i # Z
+        assert i + 1 <= n and 0 <= n - (i + 1) < oude_variant # Z op 1 of Herschrijven met 2 in 3
+        i = i + 1
+        assert i <= n and 0 <= n - i < oude_variant
+        assert [5] == [5]
+        b = [5]
+        assert b == [5]
+        assert True
+        if i == 4:
+          assert True and i == 4
+          assert a == a
+          b = a
+          assert b == a
+          assert True
+        else: 
+          assert True and not i == 4
+          assert True 
+        assert True
+        assert (a[:1] + [1] + a[1+1:])[1] == 1 and b == [5] #Uitgesteld
+        a[1] = 1 
+        assert a[1] == 1 and b == [5]
+        assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
+      assert i <= n and not i < n #POSTCONDITIE
+      
+      #Wet Uitgesteld : b
+      `,
+      statements: 
+      ``,
+      expression: ``
+};
+const aliasViolationExampleDoubleWhileLusMultipleLoopings = 
+    {
+      title: 'violation of aliasing rules while double lus. Once you looped through the second lus an alias is made between a and b. Looping back through the first lus causes alias violation.',
+      declarations: 
+      `def methode():
+      assert 0 == 0 #PRECONDITIE
+      i = 0
+      assert i == 0
+      assert 0 == 0
+      j = 0
+      assert j == 0
+      assert 5 == 5
+      n = 5
+      assert n == 5
+      assert [5,5,5]== [5,5,5]
+      a = [5,5,5]
+      assert a == [5,5,5]
+      assert [1,5,5]== [1,5,5]
+      b = [1,5,5]
+      assert b == [1,5,5]
+      assert i <= n # Uitgesteld
+      while  i < n:
+        oude_variant = n - i
+        assert i <= n and i < n and n - i == oude_variant
+        assert i < n and n - i == oude_variant and n - (i + 1) < n - i # Z
+        assert i + 1 <= n and 0 <= n - (i + 1) < oude_variant # Z op 1 of Herschrijven met 2 in 3
+        i = i + 1
+        assert i <= n and 0 <= n - i < oude_variant
+        assert (a[:1] + [0] + a[1+1:])[1] == 0 and b[0] == 1 #Uitgesteld
+        a[1] = 0 
+        assert a[1] == 0 and b[0] == 1
+        assert j <= n # Uitgesteld
+        while  j < n:
+          oude_variant2 = n - j
+          assert j <= n and j < n and n - j == oude_variant2
+          assert j < n and n - j == oude_variant2 and n - (j + 1) < n - j # Z
+          assert j + 1 <= n and 0 <= n - (j + 1) < oude_variant2 # Z op 1 of Herschrijven met 2 in 3
+          j = j + 1
+          assert j <= n and 0 <= n - j < oude_variant2
+          assert a == a
+          b = a
+          assert b == a
+          assert j <= n and 0 <= n - j < oude_variant2 #Uitgesteld
+        assert j <= n and not j < n
+        assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
+      assert i <= n and not i < n #POSTCONDITIE
+      
+      #Wet Uitgesteld : b
+      `,
+      statements: 
+      ``,
+      expression: ``
+};
+const aliasViolationExampleSingleWhileLusMultipleLoopings = 
+    {
+      title: 'violation of aliasing rules with while lus. One while lus with if statement where in then body an alias relation is made between a and b. In that case the following loop through the lus causes an alias violation  ',
+      declarations: 
+      `def methode(x):
+      assert 0 == 0 #PRECONDITIE
+      i = 0
+      assert i == 0
+      assert 5 == 5
+      n = 5
+      assert n == 5
+      assert [5,5,5]== [5,5,5]
+      a = [5,5,5]
+      assert a == [5,5,5]
+      assert [1,5,5]== [1,5,5]
+      b = [1,5,5]
+      assert b == [1,5,5]
+      assert i <= n # Uitgesteld
+      while  i < n:
+        oude_variant = n - i
+        assert i <= n and i < n and n - i == oude_variant
+        assert i < n and n - i == oude_variant and n - (i + 1) < n - i # Z
+        assert i + 1 <= n and 0 <= n - (i + 1) < oude_variant # Z op 1 of Herschrijven met 2 in 3
+        i = i + 1
+        assert i <= n and 0 <= n - i < oude_variant
+        assert (b[:1] + [0] + b[1+1:])[1] == 0 and a[0] == 1 #Uitgesteld
+        b[1] = 0 
+        assert b[1] == 0 and a[0] == 1
+        assert True
+        if x == True:
+          assert True and x == True
+          assert b == b
+          a = b
+          assert a == a    
+          assert True
+        else:
+          assert True and not x == True
+          assert True 
+        assert True
+        assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
+      assert i <= n and not i < n #POSTCONDITIE
+      
+      #Wet Uitgesteld : b
+
+      `,
+      statements: 
+      ``,
+      expression: ``
+};
+
 
 
 
@@ -5503,31 +5852,34 @@ async function testAliasingViolationExample(example: Example,errorMessage: strin
     await e.evaluate(toplevelScope);
     let [v] = pop(1);
   }
-
   checkLaws();
+  let exceptionCaught = false;
   try{
     for (let m in toplevelMethods)
     toplevelMethods[m].checkProofOutlines(true);
+    
   }
-  catch(error: any)
-  {
-    if(error.msg != errorMessage || error.loc.start != locStart || error.loc.end != locEnd)
-    {
-      throw new Error("Test alias violation case failed");
-    }
-    
-    
+ 
   
+  
+  catch(error: any)
+  { 
+    exceptionCaught = true;
+    if(error.msg != errorMessage || error.loc.start != locStart || error.loc.end != locEnd){throw new Error("Test alias violation case failed, caught incorrect error");}
   } 
 
+  if(!exceptionCaught){throw new Error("Test alias violation case failed, expected an error to be thrown");}
 }
 
 async function testAliasingViolationExamples() {
-  //await testParsingAndExecutingOfViolationExample(example); 
-  await testAliasingViolationExample(aliasViolationExampleIf,"Deze opdracht die het list-object b muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als b",541,542);
+  await testAliasingViolationExample(aliasViolationExampleIfLocalVariable,"Deze opdracht die het list-object b muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als b",541,542);
   await testAliasingViolationExample(aliasViolationExampleDoubleIfs,"Deze opdracht die het list-object c muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als c",954,955);
   await testAliasingViolationExample(aliasViolationExampleWhileWithIf,"Deze opdracht die het list-object d muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als d",1224,1225);
-  
+  await testAliasingViolationExample(aliasViolationExampleIfBasic,"Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a",525,526);
+  await testAliasingViolationExample(aliasViolationExampleLocalVarsInWhile,"Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a",415,416);
+  await testAliasingViolationExample(aliasViolationExampleViolationInLastLoopOfLus,"Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a",994,995)
+  await testAliasingViolationExample(aliasViolationExampleDoubleWhileLusMultipleLoopings,"Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a",803,804)
+  await testAliasingViolationExample(aliasViolationExampleSingleWhileLusMultipleLoopings,"Deze opdracht die het list-object b muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als b",752,753);
   console.log("All alias violation error tests passed!")
 }
 
@@ -5587,11 +5939,11 @@ async function runUnitTests() {
 
   //keep
   mayAlias = new MayAlias(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("a","d")));
-  mayAlias = mayAlias.keepRelationsWithVariables(["a","b","c","d","result"]);
+  mayAlias = mayAlias.keepRelationsWithVariables(ImmutableSet(["a","b","c","d","result"]));
   assert(mayAlias.relations.equals(new MayAlias(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("a","d"))).relations));
 
 
-  mayAlias = mayAlias.keepRelationsWithVariables(["b","c","d","result"]);
+  mayAlias = mayAlias.keepRelationsWithVariables(ImmutableSet(["b","c","d","result"]));
   assert(mayAlias.relations.equals(new MayAlias(ImmutableSet.of(ImmutableSet.of("b","c"))).relations));
 
 
@@ -5688,8 +6040,9 @@ async function testPyLearner() {
     await testExamples(secretExamples);
     console.log('All secret tests passed!');
   }
-  await testAliasingViolationExamples();
   runUnitTests();
+  await testAliasingViolationExamples();
+  
 }
 
 if (typeof window === 'undefined') // We're being executed by Node.js.

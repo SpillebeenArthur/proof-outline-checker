@@ -1354,11 +1354,21 @@ declare var Immutable: typeof import('./node_modules/immutable/dist/immutable');
 const ImmutableSet = Immutable.Set;
 
 
-/*
-
-*/
+/**
+ * An instance of this class represents a sort of mathematical relation over a set of variables. 
+ * The relation in this case is called the may-alias relation. The set of variables consists of all possible local and global variables. The relation over this set can be seen as a set of may-alias-sets.
+ * 
+ * @author Arthur Spillebeen
+ */
 class MayAliasRelation {
+  /* Set of may-alias-sets where a may-alias-set is a collection of possible aliases. If two variables are in one of the may-alias-sets together, these variables are possible aliases. */
   mayAliasSets:  Immutable.Set< Immutable.Set<string>>;
+
+  /**
+   * Constructor to create object of MayAliasRelation
+   * 
+   * @param mayAliasSets may-alias-sets to be initialized with
+   */
   constructor(mayAliasSets?:  Immutable.Set< Immutable.Set<string>>) {
     if(mayAliasSets) {
       let sortedMayAliasSets :  Immutable.Set<Immutable.Set<string>> = ImmutableSet();
@@ -1368,6 +1378,13 @@ class MayAliasRelation {
     else this.mayAliasSets = ImmutableSet();
   }
 
+  /**
+   * Method to get may-alias-relation with a variable removed from all may-alias-sets
+   * 
+   * @param variable variable to be removed from all may-alias-sets
+   * @returns MayAliasRelation-object where all occurrences of the given variabele are removed in the may-alias-sets
+   */
+
   removeVariableInMayAliasSets(variable: string) : MayAliasRelation {
     let newMayAliasSets : Immutable.Set<Immutable.Set<string>> = ImmutableSet();
     for (var mayAliasSet  of this.mayAliasSets)
@@ -1375,6 +1392,12 @@ class MayAliasRelation {
     newMayAliasSets = newMayAliasSets.filter(s => s.size > 1);
     return new MayAliasRelation(newMayAliasSets);
   }
+  /**
+   * Method to get may-alias-relation with given variables kept in all may-alias-sets
+   * 
+   * @param variables variables to be kept in all may-alias-sets
+   * @returns MayAliasRelation-object with may-alias-relation kept for all given variables
+   */
 
   keepVariablesInMayAliasSets(variables:Immutable.Set<string>): MayAliasRelation {
     let newMayAliasSets: Immutable.Set<Immutable.Set<string>> = ImmutableSet();
@@ -1385,6 +1408,13 @@ class MayAliasRelation {
     newMayAliasSets = newMayAliasSets.filter(s => s.size > 1);
     return new MayAliasRelation(newMayAliasSets);
   }
+  /**
+   * Method to get may-alias-relation with new may-alias added and other may-aliases possibly adjusted
+   * 
+   * @param lv lefthandside variable of the assigment of two variables
+   * @param rv rigthhandside variable of the assigment of two variables
+   * @returns MayAliasRelation-object with new may-alias included
+   */
 
   addMayAliasSet(lv: string,rv: string): MayAliasRelation {
     const lv_name =  lv;
@@ -1428,6 +1458,11 @@ class MayAliasRelation {
     newMayAliasRelation = newMayAliasRelation.filterMayAliasSets();
     return newMayAliasRelation;           
   }
+  /**
+   * Method to get may-alias-relation with current may-alias-sets filtered. Subsets of an other may-alias-set will be removed. 
+   * 
+   * @returns MayAliasRelation-object with filtered may-alias-sets
+   */
 
   filterMayAliasSets() : MayAliasRelation {
     let filteredMayAliasSets : Immutable.Set<Immutable.Set<string>> =  ImmutableSet();
@@ -1455,7 +1490,12 @@ class MayAliasRelation {
     return new MayAliasRelation(filteredMayAliasSets);
 
   }
-  
+  /**
+   * Method to get may-alias-relation with current may-alias-sets combined with may-alias-sets of given may-alias-relation. The total may-alias-sets are filtered.
+   * 
+   * @param o MayAliasRelation-object to combine with 
+   * @returns MayAliasRelation object with combined may-alias-sets 
+   */
   combineWithMayAliasRelation(o:MayAliasRelation): MayAliasRelation {
     let combinedMayAliasSets = this.mayAliasSets.concat(o.mayAliasSets);
     let combinedMayAliasRelation = new MayAliasRelation(combinedMayAliasSets);
@@ -2225,8 +2265,8 @@ function performAliasAnalysis(stmts: Statement[], i: number, previousStatementMa
         if(stmt.thenBody instanceof BlockStatement && stmt.elseBody instanceof BlockStatement &&  stmt.elseBody != null && stmt.thenBody != null) {
         const stmtsThenBlock = stmt.thenBody.stmts;
         const stmtsElseBlock = stmt.elseBody.stmts;
-        const stmt_mayAliasRelationsThen = stmt.mayAliasRelation;
-        const stmt_mayAliasRelationsElse = stmt.mayAliasRelation;
+        //const stmt_mayAliasRelationsThen = stmt.mayAliasRelation;
+        //const stmt_mayAliasRelationsElse = stmt.mayAliasRelation;
         let mayAliasRelationThenBlock = performAliasAnalysis(stmtsThenBlock,0,stmt.mayAliasRelation)!;
         let mayAliasRelationElseBlock = performAliasAnalysis(stmtsElseBlock,0,stmt.mayAliasRelation)!;
         if(mayAliasRelationThenBlock&&mayAliasRelationElseBlock) {

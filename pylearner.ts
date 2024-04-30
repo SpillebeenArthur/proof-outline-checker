@@ -1354,7 +1354,7 @@ declare var Immutable: typeof import('./node_modules/immutable/dist/immutable');
 const ImmutableSet = Immutable.Set;
 
 /**
- * An instance of this class represents a relation in the mathematical context, the may-alias-relation. The relation is reflexive, symmetric and not transitive. The relation holds for variables x and y if they are potential aliases of eachother.
+ * An instance of this class represents a relation in the mathematical context, the may-alias-relation. The relation is reflexive, symmetric and not transitive. The relation relates variables x and y if they are potential aliases of eachother.
  * 
  * @author Arthur Spillebeen
  */
@@ -1380,7 +1380,7 @@ class MayAliasRelation {
   }
 
   /**
-   * Returns a relation that holds for variables x and y if this holds for x and y and both x and y are different from variable.
+   * Returns a relation that relates variables x and y if and only if this holds for x and y and both x and y are different from variable.
    * 
    * @param variable variable to remove all links to
    * @returns  relation with links to variable removed
@@ -1392,7 +1392,7 @@ class MayAliasRelation {
   }
   
   /**
-   * Returns a relation that holds for variables x and y if this holds for x and y and both x and y are elements of variables.
+   * Returns a relation that relates variables x and y if and only if this holds for x and y and both x and y are elements of variables.
    * 
    * @param variables variables to be kept in all links
    * @returns new relation with links between variables kept. 
@@ -1452,11 +1452,11 @@ class MayAliasRelation {
   }
 
   /** 
-   * Returns a relation that combines the relation of this with relation of o.
+   * Returns a relation that relates variables x and y if and only if the relation holds for x and y 
    * 
-   * @returns MayAliasRelation-object with filtered may-alias-sets
+   * @returns relation  
    */
-  removeSubSets(): MayAliasRelation {
+  private removeSubSets(): MayAliasRelation {
     let filteredMayAliasSets: Immutable.Set<Immutable.Set<string>> =  ImmutableSet();
     let unfilteredMayAliasSets = this.mayAliasSets;
     for (var newMayAliasSet of unfilteredMayAliasSets) {
@@ -1485,8 +1485,8 @@ class MayAliasRelation {
   /**
    * Returns a relation that combines the relation of this with relation of o.
    * 
-   * @param o MayAliasRelation-object to combine with 
-   * @returns MayAliasRelation object with combined may-alias-sets 
+   * @param o relation to combine with 
+   * @returns combined relation
    */
   combineWithMayAliasRelation(o: MayAliasRelation): MayAliasRelation {
     let combinedMayAliasSets = this.mayAliasSets.concat(o.mayAliasSets);
@@ -2242,8 +2242,8 @@ function getOuterScopeVariables(outerScope: Scope): Immutable.Set<string> {
   return outerscopeVars;
 }
 
-function performAliasAnalysisOnBlock(blockStatement: BlockStatement, previousStatementMaybeAliasRelation: MayAliasRelation): MayAliasRelation {
-  let mayAliasRelationBlock = performAliasAnalysis(blockStatement.stmts,0,previousStatementMaybeAliasRelation)!;
+function performMayAliasAnalysisOnBlock(blockStatement: BlockStatement, previousStatementMaybeAliasRelation: MayAliasRelation): MayAliasRelation {
+  let mayAliasRelationBlock = performMayAliasAnalysis(blockStatement.stmts,0,previousStatementMaybeAliasRelation)!;
   const scopeBlock = blockStatement.scope!;
   const localVars = getLocalVariablesInScope(scopeBlock);
   const outerscopeVars = getOuterScopeVariables(scopeBlock.outerScope!);
@@ -2252,7 +2252,7 @@ function performAliasAnalysisOnBlock(blockStatement: BlockStatement, previousSta
   return mayAliasRelationResult;
 } 
 
-function performAliasAnalysis(stmts: Statement[], i: number, previousStatementMaybeAliasRelation: MayAliasRelation): MayAliasRelation {
+function performMayAliasAnalysis(stmts: Statement[], i: number, previousStatementMaybeAliasRelation: MayAliasRelation): MayAliasRelation {
   if (!(stmts.length == i)) {
     let stmt = stmts[i];
     stmt.mayAliasRelation = previousStatementMaybeAliasRelation;
@@ -2265,31 +2265,31 @@ function performAliasAnalysis(stmts: Statement[], i: number, previousStatementMa
     }
     else if (stmt instanceof IfStatement) {
         if (stmt.thenBody instanceof BlockStatement && stmt.elseBody instanceof BlockStatement &&  stmt.elseBody != null && stmt.thenBody != null) {
-        let mayAliasRelationThenBlock = performAliasAnalysisOnBlock(stmt.thenBody,stmt.mayAliasRelation)!;
-        let mayAliasRelationElseBlock = performAliasAnalysisOnBlock(stmt.elseBody,stmt.mayAliasRelation)!;
+        let mayAliasRelationThenBlock = performMayAliasAnalysisOnBlock(stmt.thenBody,stmt.mayAliasRelation)!;
+        let mayAliasRelationElseBlock = performMayAliasAnalysisOnBlock(stmt.elseBody,stmt.mayAliasRelation)!;
         let combinedMayAliasRelation = mayAliasRelationThenBlock.combineWithMayAliasRelation(mayAliasRelationElseBlock);
-        return performAliasAnalysis(stmts,i+1,combinedMayAliasRelation);
+        return performMayAliasAnalysis(stmts,i+1,combinedMayAliasRelation);
       }
     }
     else if (stmt instanceof WhileStatement) {
       if (stmt.body instanceof BlockStatement && stmt.body != null) {
         const whileBlock = stmt.body;
-        let mayAliasRelationWhileBlock = performAliasAnalysisOnBlock(whileBlock,stmt.mayAliasRelation);
-        let mayAliasRelationWhileBlockCheck = performAliasAnalysisOnBlock(whileBlock,mayAliasRelationWhileBlock);
+        let mayAliasRelationWhileBlock = performMayAliasAnalysisOnBlock(whileBlock,stmt.mayAliasRelation);
+        let mayAliasRelationWhileBlockCheck = performMayAliasAnalysisOnBlock(whileBlock,mayAliasRelationWhileBlock);
         while (mayAliasRelationWhileBlock.mayAliasSets.toJS().toString() != mayAliasRelationWhileBlockCheck.mayAliasSets.toJS().toString()) {
           mayAliasRelationWhileBlock = mayAliasRelationWhileBlockCheck;
-          mayAliasRelationWhileBlockCheck = performAliasAnalysisOnBlock(whileBlock,mayAliasRelationWhileBlock);
+          mayAliasRelationWhileBlockCheck = performMayAliasAnalysisOnBlock(whileBlock,mayAliasRelationWhileBlock);
         }
-        return performAliasAnalysis(stmts,i+1,mayAliasRelationWhileBlockCheck);
+        return performMayAliasAnalysis(stmts,i+1,mayAliasRelationWhileBlockCheck);
       }
     }
-    return performAliasAnalysis(stmts,i+1,stmt.mayAliasRelation); 
+    return performMayAliasAnalysis(stmts,i+1,stmt.mayAliasRelation); 
   }
   else return previousStatementMaybeAliasRelation;
 }
 
 function checkProofOutline(checkEntailments: boolean, total: boolean, env: Env_, stmts: Statement[]) {
-  performAliasAnalysis(stmts,0,new MayAliasRelation());
+  performMayAliasAnalysis(stmts,0,new MayAliasRelation());
   const outline = parseProofOutline(stmts, 0, false);
   if (!stmt_is_well_typed(env, outline))
     throw new LocError(new Loc(stmts[0].loc.doc, stmts[0].loc.start, stmts[stmts.length - 1].loc.end), "Het bewijssilhouet voldoet niet aan de typeregels");
@@ -5901,24 +5901,10 @@ async function runUnitTests() {
   mayAliasRelationToCombine = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("d","e")));
   mayAliasRelation = mayAliasRelation.combineWithMayAliasRelation(mayAliasRelationToCombine);
   assert(mayAliasRelation.mayAliasSets.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("d","e"))).mayAliasSets));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of());
-  mayAliasRelation = mayAliasRelation.removeSubSets();
-  assert(mayAliasRelation.mayAliasSets.equals(new MayAliasRelation(ImmutableSet.of()).mayAliasSets));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b"),ImmutableSet.of("c")));
-  mayAliasRelation = mayAliasRelation.removeSubSets();
-  assert(mayAliasRelation.mayAliasSets.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b"),ImmutableSet.of("c"))).mayAliasSets));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b"),ImmutableSet.of("b","c")));
-  mayAliasRelation = mayAliasRelation.removeSubSets();
-  assert(mayAliasRelation.mayAliasSets.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b"),ImmutableSet.of("b","c"))).mayAliasSets));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("b","c")));
-  mayAliasRelation = mayAliasRelation.removeSubSets();
-  assert(mayAliasRelation.mayAliasSets.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"))).mayAliasSets));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("b","c"),ImmutableSet.of("a","b")));
-  mayAliasRelation = mayAliasRelation.removeSubSets();
-  assert(mayAliasRelation.mayAliasSets.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"))).mayAliasSets));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("a","c"),ImmutableSet.of("a","c","d"),ImmutableSet.of("a","b","d"),ImmutableSet.of("a","c"),ImmutableSet.of("a","b","c","e")));
-  mayAliasRelation = mayAliasRelation.removeSubSets();  
-  assert(mayAliasRelation.mayAliasSets.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","c","d"),ImmutableSet.of("a","b","d"),ImmutableSet.of("a","b","c","e"))).mayAliasSets));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("a","c","d"),ImmutableSet.of("a","b","c","e"),ImmutableSet.of("b","d","e")));
+  mayAliasRelationToCombine = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","c"),ImmutableSet.of("a","b","d"),ImmutableSet.of("b","d","e")));
+  mayAliasRelation = mayAliasRelation.combineWithMayAliasRelation(mayAliasRelationToCombine);  
+  assert(mayAliasRelation.mayAliasSets.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","c","d"),ImmutableSet.of("a","b","d"),ImmutableSet.of("a","b","c","e"),ImmutableSet.of("b","d","e"))).mayAliasSets));
   console.log("All Unit tests passed!")
 }
 

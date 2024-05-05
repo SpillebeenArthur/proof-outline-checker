@@ -1354,26 +1354,29 @@ declare var Immutable: typeof import('./node_modules/immutable/dist/immutable');
 const ImmutableSet = Immutable.Set;
 
 /**
- * An instance of this class represents a relation in the mathematical context, the may-alias-relation. The relation is reflexive, symmetric and not transitive. The relation relates variables x and y if they are potential aliases of eachother.
+ * An instance of this class represents a mathematical relation between variable names, the may-alias-relation. The relation is reflexive, symmetric and not transitive. The relation relates variables x and y if they are potential aliases of eachother.
  * 
  * @author Arthur Spillebeen
  */
 class MayAliasRelation {
   /**  Set of may-alias-sets where a may-alias-set is a collection of possible aliases. If two variables are in one of the may-alias-sets together, these variables are possible aliases.
    *
-   * @invar a may-alias-set is never a subset of another may-aliast-set |
-   * @invar a may alais-set consists of minimal two variables | 
+   * @invar a may-alias-set is never a subset of another may-aliast-set 
+   * @invar a may alias-set consists of at least two variables  
    */
+  //TODO : mogelijks beschrijven met "element van set van mayaliassets"
   readonly mayAliasSets:  Immutable.Set< Immutable.Set<string>>;
 
   /**
-   * Constructor to create object of MayAliasRelation
+   * Constructor to create object of MayAliasRelation that relates variables names iff two 
    * 
    * @param mayAliasSets may-alias-sets to be initialized with
    */
+  // TODO : with given sets, relatie beschreven door gegeven sets in fucntie van relatie   
   constructor(mayAliasSets?: Immutable.Set<Immutable.Set<string>>) {
     if (mayAliasSets) {
       mayAliasSets = mayAliasSets.filter(s => s.size > 1);
+      //TODO : subsets niet aanwezig
       this.mayAliasSets = mayAliasSets;
     } else 
       this.mayAliasSets = ImmutableSet();
@@ -1389,6 +1392,7 @@ class MayAliasRelation {
     let newMayAliasSets: Immutable.Set<Immutable.Set<string>> = ImmutableSet();
     newMayAliasSets = this.mayAliasSets.map(s => s.filter(v => variable != v)).filter(s => s.size > 1);
     return new MayAliasRelation(newMayAliasSets);
+    //TODO : garanderen geen subsets, if 
   }
   
   /**
@@ -1401,6 +1405,7 @@ class MayAliasRelation {
     let newMayAliasSets: Immutable.Set<Immutable.Set<string>> = ImmutableSet();
     newMayAliasSets = this.mayAliasSets.map(s => s.filter(v => variables.includes(v))).filter(s => s.size > 1);
     return new MayAliasRelation(newMayAliasSets);
+    //TODO : garanderen geen subsets, if 
   }
 
   /**
@@ -2120,48 +2125,46 @@ function parseProofOutline(stmts: Statement[], i: number, precededByAssert: bool
       return stmt.executionError(`Toekenningen aan variabelen van het type ${lhs.type} worden nog niet ondersteund.`);
     });
     return Seq(Assign(stmt.loc, x, parseProofOutlineExpression(stmt.expr.rhs)), parseProofOutline(stmts, i + 1, false));  
-  } 
-  else if (stmt instanceof ExpressionStatement && stmt.expr instanceof AssignmentExpression && stmt.expr.op == '=' && stmt.expr.lhs instanceof SubscriptExpression){
+  } else if (stmt instanceof ExpressionStatement && stmt.expr instanceof AssignmentExpression && stmt.expr.op == '=' && stmt.expr.lhs instanceof SubscriptExpression){
     const rhs = stmt.expr.rhs;
     const lhs = stmt.expr.lhs;
     const lhs_index = lhs.index;
+    if (!(lhs.target instanceof VariableExpression))
+      stmt.executionError(`Toekenningen aan subscripts met target van het type ${lhs.target.type} worden nog niet ondersteund.`);
     const lhs_target = lhs.target as VariableExpression;
     const x = lhs_target.getProofOutlineVariable(() => {
       return stmt.executionError(`Toekenningen aan variabelen van het type ${lhs.type} worden nog niet ondersteund.`);
     });
-
-    const previousStatement = stmts[i-1]; 
-    if (preConditionHasAlias(previousStatement as AssertStatement,stmt)) {
-      const name = (((stmt.expr as AssignmentExpression).lhs as SubscriptExpression).target as VariableExpression).name;
-      return stmt.expr.executionError(`Deze opdracht die het list-object ${name} muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als ${name}`);
-
-    }
-    let zeroIntLiteral = new IntLiteral(stmt.loc,0);
+    const previousStatement = stmts[i-1];
+    if (!(previousStatement instanceof AssertStatement))
+      return stmt.executionError(`Opdracht moet worden voorafgegaan door een assert statement`);
+    if (preconditionHasAlias(previousStatement as AssertStatement, stmt))
+      return stmt.expr.executionError(`Deze opdracht die het list-object ${lhs_target.name} muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als ${lhs_target.name}`);
+    let zeroIntLiteral = new IntLiteral(stmt.loc, 0);
     zeroIntLiteral.type = intType;
-    const firstSliceExpression = new SliceExpression(rhs.loc,rhs.instrLoc!,lhs_target,zeroIntLiteral,lhs_index);
+    const firstSliceExpression = new SliceExpression(rhs.loc, rhs.instrLoc!, lhs_target, zeroIntLiteral, lhs_index);
     let firstSliceExpressionType = new InferredType();
-    firstSliceExpressionType.type = new ListType(new InferredType().type = intType);
+    firstSliceExpressionType.type = new ListType(intType);
     firstSliceExpression.type = firstSliceExpressionType;
-    const listExpression = new ListExpression(rhs.loc,rhs.instrLoc!,new ImplicitTypeExpression(),[stmt.expr.rhs]);
-    listExpression.type = new ListType(new InferredType().type = intType);
-    let oneIntLiteral = new IntLiteral(stmt.loc,1)
+    const listExpression = new ListExpression(rhs.loc, rhs.instrLoc!, new ImplicitTypeExpression(), [stmt.expr.rhs]);
+    listExpression.type = new ListType(intType);
+    let oneIntLiteral = new IntLiteral(stmt.loc, 1);
     oneIntLiteral.type = intType;
-    const binaryOperatorExpression = new BinaryOperatorExpression(stmt.loc,stmt.instrLoc!,lhs_index,"+",oneIntLiteral)
+    const binaryOperatorExpression = new BinaryOperatorExpression(stmt.loc, stmt.instrLoc!, lhs_index, "+", oneIntLiteral);
     binaryOperatorExpression.type = new ListType(intType);
-    const lenExpression = new LenExpression(stmt.loc,stmt.instrLoc!,lhs_target)
+    const lenExpression = new LenExpression(stmt.loc, stmt.instrLoc!, lhs_target);
     lenExpression.type = intType;
-    const secondSliceExpression = new SliceExpression(rhs.loc,rhs.instrLoc!,lhs_target,binaryOperatorExpression,lenExpression);
+    const secondSliceExpression = new SliceExpression(rhs.loc, rhs.instrLoc!, lhs_target, binaryOperatorExpression, lenExpression);
     let secondSliceExpressionType = new InferredType();
-    secondSliceExpressionType.type = new ListType(new InferredType().type = intType);
+    secondSliceExpressionType.type = new ListType(intType);
     secondSliceExpression.type = secondSliceExpressionType;
     const t1 = parseProofOutlineExpression(firstSliceExpression);
     const t2 = parseProofOutlineExpression(listExpression);
     const t3 = parseProofOutlineExpression(secondSliceExpression);
-    const leftConcat=  App(rhs.loc, App(rhs.loc, Const(rhs.loc, intListPlusConst), t1), t2);
+    const leftConcat =  App(rhs.loc, App(rhs.loc, Const(rhs.loc, intListPlusConst), t1), t2);
     const concat =  App(rhs.loc, App(rhs.loc, Const(rhs.loc, intListPlusConst), leftConcat), t3);
-    return Seq(Assign(stmt.loc, x, concat), parseProofOutline(stmts, i + 1, false));  
-  }
-  else if (stmt instanceof IfStatement) {
+    return Seq(Assign(stmt.loc, x, concat), parseProofOutline(stmts, i + 1, false));
+  } else if (stmt instanceof IfStatement) {
     if (stmt.elseBody == null)
       return stmt.executionError("'if'-opdrachten in bewijssilhouetten moeten een 'else'-tak hebben. Voeg 'else: pass' toe.");
     if (!(stmt.thenBody instanceof BlockStatement) || !(stmt.elseBody instanceof BlockStatement))
@@ -2180,7 +2183,7 @@ function parseProofOutline(stmts: Statement[], i: number, precededByAssert: bool
 }
 
 function collectVariablesInExpression(expr: Expression): Immutable.Set<string> {
-  let collectedVars : Immutable.Set<string> =  ImmutableSet();
+  let collectedVars: Immutable.Set<string> = ImmutableSet();
   if (expr instanceof BinaryOperatorExpression)
     return collectVariablesInExpression(expr.leftOperand).concat(collectVariablesInExpression(expr.rightOperand));
   else if (expr instanceof SubscriptExpression) 
@@ -2190,46 +2193,32 @@ function collectVariablesInExpression(expr: Expression): Immutable.Set<string> {
   else if (expr instanceof SliceExpression)
     return collectVariablesInExpression(expr.target).concat(collectVariablesInExpression(expr.startIndex)).concat(collectVariablesInExpression(expr.endIndex)); 
   else if (expr instanceof CallExpression) {
-    expr.arguments.forEach(subExpr => {
-      const collectVarsInArgument =  collectVariablesInExpression(subExpr);
-      collectedVars = collectedVars.concat(collectVarsInArgument);
-    });
+    expr.arguments.reduce((total, subExpr) => {
+      return total.concat(collectVariablesInExpression(subExpr))
+    }, ImmutableSet());
   }
   else if (expr instanceof UnaryOperatorExpression)
     return collectVariablesInExpression(expr.operand);
   else if (expr instanceof VariableExpression)
-    collectedVars = collectedVars.add(expr.name);
+    collectedVars = ImmutableSet.of(expr.name);
   return collectedVars;
 }
 
-function preConditionHasAlias(astmt: AssertStatement, stmt: ExpressionStatement): boolean {
+function preconditionHasAlias(astmt: AssertStatement, stmt: ExpressionStatement): boolean {
   let varsInPrecondition = ImmutableSet();
   let mayAliasesOfSubscriptTarget = ImmutableSet();
   if (stmt.expr instanceof AssignmentExpression) {
     if (stmt.expr.lhs instanceof SubscriptExpression) {
       if (stmt.expr.lhs.target instanceof VariableExpression) {
         const name = stmt.expr.lhs.target.name;
-        let mayAliasSetsWithName : Immutable.Set<Immutable.Set<string>> =  ImmutableSet();
-        stmt.mayAliasRelation.mayAliasSets.forEach(s => mayAliasSetsWithName = mayAliasSetsWithName.add(s));
+        const mayAliasSetsWithName = stmt.mayAliasRelation.mayAliasSets.filter(s => s.includes(name));
         mayAliasesOfSubscriptTarget = mayAliasSetsWithName.flatten().toSet().delete(name);
         varsInPrecondition = collectVariablesInExpression(astmt.condition).delete(name);
       }
     }
   }
-  let hasAlias = false;
-  varsInPrecondition.forEach(e => {
-    if (mayAliasesOfSubscriptTarget.includes(e))
-      hasAlias = true;
-  });
+  const hasAlias = !varsInPrecondition.intersect(mayAliasesOfSubscriptTarget).isEmpty();
   return hasAlias;
-}
-
-function getLocalVariablesInScope(scope: Scope): Immutable.Set<string> {
-  let localVars : Immutable.Set<string> =  ImmutableSet();
-  const bindings = scope!.bindings;
-  for (var x in bindings)
-    localVars = localVars.add(x);
-  return localVars;
 }
 
 function getOuterScopeVariables(outerScope: Scope): Immutable.Set<string> {
@@ -2245,28 +2234,29 @@ function getOuterScopeVariables(outerScope: Scope): Immutable.Set<string> {
 function performMayAliasAnalysisOnBlock(blockStatement: BlockStatement, previousStatementMaybeAliasRelation: MayAliasRelation): MayAliasRelation {
   let mayAliasRelationBlock = performMayAliasAnalysis(blockStatement.stmts,0,previousStatementMaybeAliasRelation)!;
   const scopeBlock = blockStatement.scope!;
-  const localVars = getLocalVariablesInScope(scopeBlock);
+  const localVars = ImmutableSet(Object.keys(scopeBlock!.bindings))
   const outerscopeVars = getOuterScopeVariables(scopeBlock.outerScope!);
   let varsToKeep = outerscopeVars.subtract(localVars);
   const mayAliasRelationResult = mayAliasRelationBlock.keepOnlyVariables(varsToKeep);
   return mayAliasRelationResult;
 } 
 
-function performMayAliasAnalysis(stmts: Statement[], i: number, previousStatementMaybeAliasRelation: MayAliasRelation): MayAliasRelation {
+function performMayAliasAnalysis(stmts: Statement[], i: number, previousStatementMayAliasRelation: MayAliasRelation): MayAliasRelation {
   if (!(stmts.length == i)) {
     let stmt = stmts[i];
-    stmt.mayAliasRelation = previousStatementMaybeAliasRelation;
+    stmt.mayAliasRelation = previousStatementMayAliasRelation;
     if (stmt instanceof ExpressionStatement) {
       if (stmt.expr instanceof AssignmentExpression && stmt.expr.op == '=' && stmt.expr.lhs instanceof VariableExpression) {
         if (stmt.expr.rhs instanceof VariableExpression) 
           stmt.mayAliasRelation = stmt.mayAliasRelation.addMayAliasLink(stmt.expr.lhs.name,stmt.expr.rhs.name);
-        else stmt.mayAliasRelation = stmt.mayAliasRelation.removeVariable(stmt.expr.lhs.name);   
+        else 
+          stmt.mayAliasRelation = stmt.mayAliasRelation.removeVariable(stmt.expr.lhs.name);   
       }
     }
     else if (stmt instanceof IfStatement) {
-        if (stmt.thenBody instanceof BlockStatement && stmt.elseBody instanceof BlockStatement &&  stmt.elseBody != null && stmt.thenBody != null) {
-        let mayAliasRelationThenBlock = performMayAliasAnalysisOnBlock(stmt.thenBody,stmt.mayAliasRelation)!;
-        let mayAliasRelationElseBlock = performMayAliasAnalysisOnBlock(stmt.elseBody,stmt.mayAliasRelation)!;
+      if (stmt.thenBody instanceof BlockStatement && stmt.elseBody instanceof BlockStatement &&  stmt.elseBody != null && stmt.thenBody != null) {
+        let mayAliasRelationThenBlock = performMayAliasAnalysisOnBlock(stmt.thenBody,stmt.mayAliasRelation);
+        let mayAliasRelationElseBlock = performMayAliasAnalysisOnBlock(stmt.elseBody,stmt.mayAliasRelation);
         let combinedMayAliasRelation = mayAliasRelationThenBlock.combineWithMayAliasRelation(mayAliasRelationElseBlock);
         return performMayAliasAnalysis(stmts,i+1,combinedMayAliasRelation);
       }
@@ -2276,7 +2266,7 @@ function performMayAliasAnalysis(stmts: Statement[], i: number, previousStatemen
         const whileBlock = stmt.body;
         let mayAliasRelationWhileBlock = performMayAliasAnalysisOnBlock(whileBlock,stmt.mayAliasRelation);
         let mayAliasRelationWhileBlockCheck = performMayAliasAnalysisOnBlock(whileBlock,mayAliasRelationWhileBlock);
-        while (mayAliasRelationWhileBlock.mayAliasSets.toJS().toString() != mayAliasRelationWhileBlockCheck.mayAliasSets.toJS().toString()) {
+        while (!mayAliasRelationWhileBlock.mayAliasSets.equals(mayAliasRelationWhileBlockCheck.mayAliasSets)) {
           mayAliasRelationWhileBlock = mayAliasRelationWhileBlockCheck;
           mayAliasRelationWhileBlockCheck = performMayAliasAnalysisOnBlock(whileBlock,mayAliasRelationWhileBlock);
         }
@@ -2285,7 +2275,8 @@ function performMayAliasAnalysis(stmts: Statement[], i: number, previousStatemen
     }
     return performMayAliasAnalysis(stmts,i+1,stmt.mayAliasRelation); 
   }
-  else return previousStatementMaybeAliasRelation;
+  else 
+    return previousStatementMayAliasRelation;
 }
 
 function checkProofOutline(checkEntailments: boolean, total: boolean, env: Env_, stmts: Statement[]) {

@@ -1370,7 +1370,7 @@ class MayAliasRelation {
    * Constructor to create may-alias-relation that relates variable names if and only if variables are potential aliases by given links.
    * 
    * @param mayAliasSets may-alias-sets to be initialized with
-   * @pre An element of given mayAliasSets may not be a subset of another element.
+   * @pre An element of the given set mayAliasSets may not be a subset of another element.
    */
   constructor(mayAliasSets?: Immutable.Set<Immutable.Set<string>>) {
     if (mayAliasSets) {
@@ -1390,7 +1390,7 @@ class MayAliasRelation {
     let newMayAliasSets: Immutable.Set<Immutable.Set<string>> = ImmutableSet();
     newMayAliasSets = this.mayAliasSets.map(s => s.filter(v => variable != v)).filter(s => s.size > 1);
     let newMayAliasRelation = new MayAliasRelation(newMayAliasSets);
-    return newMayAliasRelation.removeSubSets();
+    return newMayAliasRelation.removeSubsets();
   }
   
   /**
@@ -1403,7 +1403,7 @@ class MayAliasRelation {
     let newMayAliasSets: Immutable.Set<Immutable.Set<string>> = ImmutableSet();
     newMayAliasSets = this.mayAliasSets.map(s => s.filter(v => variables.includes(v))).filter(s => s.size > 1);
     let newMayAliasRelation = new MayAliasRelation(newMayAliasSets);
-    return newMayAliasRelation.removeSubSets();
+    return newMayAliasRelation.removeSubsets();
   }
   
   /**
@@ -1450,7 +1450,7 @@ class MayAliasRelation {
     }
     newMayAliasSets =  newMayAliasSets.filter(s => s.size>1);
     let newMayAliasRelation = new MayAliasRelation(newMayAliasSets);
-    newMayAliasRelation = newMayAliasRelation.removeSubSets();
+    newMayAliasRelation = newMayAliasRelation.removeSubsets();
     return newMayAliasRelation;
   }
 
@@ -1459,32 +1459,32 @@ class MayAliasRelation {
    * 
    * @returns relation  
    */
-  private removeSubSets(): MayAliasRelation {
-    let mayAliasSetsSubSetsRemoved: Immutable.Set<Immutable.Set<string>> =  ImmutableSet();
+  private removeSubsets(): MayAliasRelation {
+    let mayAliasSetsSubsetsRemoved: Immutable.Set<Immutable.Set<string>> =  ImmutableSet();
     let mayAliasSetsToCheck = this.mayAliasSets;
     for (var mayAliasSetToCheck of mayAliasSetsToCheck) {
       let mayAliasSetsToDelete: Immutable.Set<Immutable.Set<string>> =  ImmutableSet();
-      let isToBeCheckedMayAliasSetNotSubSet = true;
-      for (var mayAliasSetChecked of mayAliasSetsSubSetsRemoved) {
+      let isToBeCheckedMayAliasSetNotSubset = true;
+      for (var mayAliasSetChecked of mayAliasSetsSubsetsRemoved) {
         const toBeCheckedMayAliasSetIsSubset = mayAliasSetToCheck.every(v => mayAliasSetChecked.includes(v));
         const checkedMayAliasSetIsSubset = mayAliasSetChecked.every(v => mayAliasSetToCheck.includes(v));
         if (toBeCheckedMayAliasSetIsSubset)
-          isToBeCheckedMayAliasSetNotSubSet = false;
+          isToBeCheckedMayAliasSetNotSubset = false;
         else if (checkedMayAliasSetIsSubset)
           mayAliasSetsToDelete = mayAliasSetsToDelete.add(mayAliasSetChecked);
       }
-      if (isToBeCheckedMayAliasSetNotSubSet) {
-        mayAliasSetsSubSetsRemoved = mayAliasSetsSubSetsRemoved.add(mayAliasSetToCheck);
+      if (isToBeCheckedMayAliasSetNotSubset) {
+        mayAliasSetsSubsetsRemoved = mayAliasSetsSubsetsRemoved.add(mayAliasSetToCheck);
         let resultMayAliasSets: Immutable.Set<Immutable.Set<string>> =  ImmutableSet();
-        for (var checkedMayAliasSet of mayAliasSetsSubSetsRemoved) {
+        for (var checkedMayAliasSet of mayAliasSetsSubsetsRemoved) {
           if (!mayAliasSetsToDelete.includes(checkedMayAliasSet))
             resultMayAliasSets = resultMayAliasSets.add(checkedMayAliasSet);
         }
-        mayAliasSetsSubSetsRemoved = resultMayAliasSets;
+        mayAliasSetsSubsetsRemoved = resultMayAliasSets;
         mayAliasSetsToDelete = ImmutableSet();
       }
     }
-    return new MayAliasRelation(mayAliasSetsSubSetsRemoved);
+    return new MayAliasRelation(mayAliasSetsSubsetsRemoved);
   }
 
   /**
@@ -1496,8 +1496,35 @@ class MayAliasRelation {
   combineWithMayAliasRelation(o: MayAliasRelation): MayAliasRelation {
     let combinedMayAliasSets = this.mayAliasSets.concat(o.mayAliasSets);
     let combinedMayAliasRelation = new MayAliasRelation(combinedMayAliasSets);
-    const filtererdMayAlias = combinedMayAliasRelation.removeSubSets();
+    const filtererdMayAlias = combinedMayAliasRelation.removeSubsets();
     return filtererdMayAlias;
+  }
+
+  /**
+   * Returns the variables in the relation that relate to the given variable 
+   * 
+   * @param variable variable of which the may-aliases are requested
+   * @returns a set of may-aliases of given variable
+   */
+  getMayAliasesOfVariable(variable: string): Immutable.Set<string> {
+    let mayAliasesOfVariable: Immutable.Set<string> = ImmutableSet();
+    this.mayAliasSets.forEach(s => {      
+      if (s.includes(variable)) {
+        const mayAliasesInSet = s.delete(variable);
+        mayAliasesOfVariable = mayAliasesOfVariable.concat(mayAliasesInSet);
+      }
+    });
+    return mayAliasesOfVariable;
+  }
+
+  /**
+   * Return a boolean that states if two relations are equal or not. two relations are equal if and only if one relation relates variables x and y and the other relation also relates variables x and y
+   * 
+   * @param other may-alias-relation to check with 
+   * @returns boolean 
+   */
+  equals(other: MayAliasRelation): boolean {
+    return this.mayAliasSets.equals(other.mayAliasSets);
   }
 }
 
@@ -2205,9 +2232,8 @@ function collectVariablesInExpression(expr: Expression): Immutable.Set<string> {
 }
 
 function preconditionHasMayAlias(conditionAssertStatement: Expression, targetVariableName: string, mayAliasRelationOfStmt: MayAliasRelation): boolean {
-  const mayAliasSetsWithTargetVariableName = mayAliasRelationOfStmt.mayAliasSets.filter(s => s.includes(targetVariableName));
-  let mayAliases = mayAliasSetsWithTargetVariableName.flatten().toSet().delete(targetVariableName);
-  let otherVariablesInPrecondition = collectVariablesInExpression(conditionAssertStatement).delete(targetVariableName);
+  const mayAliases = mayAliasRelationOfStmt.getMayAliasesOfVariable(targetVariableName);
+  const otherVariablesInPrecondition = collectVariablesInExpression(conditionAssertStatement).delete(targetVariableName);
   const hasAlias = !mayAliases.intersect(otherVariablesInPrecondition).isEmpty();
   return hasAlias;
 }
@@ -2225,7 +2251,7 @@ function getOuterScopeVariables(outerScope: Scope): Immutable.Set<string> {
 function performMayAliasAnalysisOnBlock(blockStatement: BlockStatement, previousStatementMaybeAliasRelation: MayAliasRelation): MayAliasRelation {
   let mayAliasRelationBlock = performMayAliasAnalysis(blockStatement.stmts,0,previousStatementMaybeAliasRelation)!;
   const scopeBlock = blockStatement.scope!;
-  const localVars = ImmutableSet(Object.keys(scopeBlock!.bindings))
+  const localVars = ImmutableSet(Object.keys(scopeBlock!.bindings));
   const outerscopeVars = getOuterScopeVariables(scopeBlock.outerScope!);
   let varsToKeep = outerscopeVars.subtract(localVars);
   const mayAliasRelationResult = mayAliasRelationBlock.keepOnlyVariables(varsToKeep);
@@ -2239,39 +2265,37 @@ function performMayAliasAnalysis(stmts: Statement[], i: number, previousStatemen
     if (stmt instanceof ExpressionStatement) {
       if (stmt.expr instanceof AssignmentExpression && stmt.expr.op == '=' && stmt.expr.lhs instanceof VariableExpression) {
         if (stmt.expr.rhs instanceof VariableExpression) 
-          stmt.mayAliasRelation = stmt.mayAliasRelation.addMayAliasLink(stmt.expr.lhs.name,stmt.expr.rhs.name);
+          stmt.mayAliasRelation = stmt.mayAliasRelation.addMayAliasLink(stmt.expr.lhs.name, stmt.expr.rhs.name);
         else 
           stmt.mayAliasRelation = stmt.mayAliasRelation.removeVariable(stmt.expr.lhs.name);   
       }
-    }
-    else if (stmt instanceof IfStatement) {
+    } else if (stmt instanceof IfStatement) {
       if (stmt.thenBody instanceof BlockStatement && stmt.elseBody instanceof BlockStatement &&  stmt.elseBody != null && stmt.thenBody != null) {
-        let mayAliasRelationThenBlock = performMayAliasAnalysisOnBlock(stmt.thenBody,stmt.mayAliasRelation);
-        let mayAliasRelationElseBlock = performMayAliasAnalysisOnBlock(stmt.elseBody,stmt.mayAliasRelation);
+        let mayAliasRelationThenBlock = performMayAliasAnalysisOnBlock(stmt.thenBody, stmt.mayAliasRelation);
+        let mayAliasRelationElseBlock = performMayAliasAnalysisOnBlock(stmt.elseBody, stmt.mayAliasRelation);
         let combinedMayAliasRelation = mayAliasRelationThenBlock.combineWithMayAliasRelation(mayAliasRelationElseBlock);
-        return performMayAliasAnalysis(stmts,i+1,combinedMayAliasRelation);
+        return performMayAliasAnalysis(stmts, i+1, combinedMayAliasRelation);
       }
-    }
-    else if (stmt instanceof WhileStatement) {
+    } else if (stmt instanceof WhileStatement) {
       if (stmt.body instanceof BlockStatement && stmt.body != null) {
         const whileBlock = stmt.body;
-        let mayAliasRelationWhileBlock = performMayAliasAnalysisOnBlock(whileBlock,stmt.mayAliasRelation);
-        let mayAliasRelationWhileBlockCheck = performMayAliasAnalysisOnBlock(whileBlock,mayAliasRelationWhileBlock);
-        while (!mayAliasRelationWhileBlock.mayAliasSets.equals(mayAliasRelationWhileBlockCheck.mayAliasSets)) {
+        let mayAliasRelationWhileBlock = performMayAliasAnalysisOnBlock(whileBlock, stmt.mayAliasRelation);
+        let mayAliasRelationWhileBlockCheck = performMayAliasAnalysisOnBlock(whileBlock, mayAliasRelationWhileBlock);
+        while (!mayAliasRelationWhileBlock.equals(mayAliasRelationWhileBlockCheck)) {
           mayAliasRelationWhileBlock = mayAliasRelationWhileBlockCheck;
-          mayAliasRelationWhileBlockCheck = performMayAliasAnalysisOnBlock(whileBlock,mayAliasRelationWhileBlock);
+          mayAliasRelationWhileBlockCheck = performMayAliasAnalysisOnBlock(whileBlock, mayAliasRelationWhileBlock);
         }
-        return performMayAliasAnalysis(stmts,i+1,mayAliasRelationWhileBlockCheck);
+        return performMayAliasAnalysis(stmts, i+1, mayAliasRelationWhileBlockCheck);
       }
     }
-    return performMayAliasAnalysis(stmts,i+1,stmt.mayAliasRelation); 
+    return performMayAliasAnalysis(stmts, i+1, stmt.mayAliasRelation); 
   }
   else 
     return previousStatementMayAliasRelation;
 }
 
 function checkProofOutline(checkEntailments: boolean, total: boolean, env: Env_, stmts: Statement[]) {
-  performMayAliasAnalysis(stmts,0,new MayAliasRelation());
+  performMayAliasAnalysis(stmts, 0, new MayAliasRelation());
   const outline = parseProofOutline(stmts, 0, false);
   if (!stmt_is_well_typed(env, outline))
     throw new LocError(new Loc(stmts[0].loc.doc, stmts[0].loc.start, stmts[stmts.length - 1].loc.end), "Het bewijssilhouet voldoet niet aan de typeregels");
@@ -5787,14 +5811,14 @@ async function testAliasingViolationExample(example: Example,errorMessage: strin
 }
 
 async function testAliasingViolationExamples() {
-  await testAliasingViolationExample(aliasViolationExampleIfLocalVariable,"Deze opdracht die het list-object b muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als b",541,542);
-  await testAliasingViolationExample(aliasViolationExampleDoubleIfs,"Deze opdracht die het list-object c muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als c",954,955);
-  await testAliasingViolationExample(aliasViolationExampleWhileWithIf,"Deze opdracht die het list-object d muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als d",1224,1225);
-  await testAliasingViolationExample(aliasViolationExampleIfBasic,"Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a",525,526);
-  await testAliasingViolationExample(aliasViolationExampleLocalVarsInWhile,"Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a",415,416);
-  await testAliasingViolationExample(aliasViolationExampleViolationInLastLoopOfLus,"Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a",994,995);
-  await testAliasingViolationExample(aliasViolationExampleDoubleWhileLusMultipleLoopings,"Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a",803,804);
-  await testAliasingViolationExample(aliasViolationExampleSingleWhileLusMultipleLoopings,"Deze opdracht die het list-object b muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als b",752,753);
+  await testAliasingViolationExample(aliasViolationExampleIfLocalVariable, "Deze opdracht die het list-object b muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als b", 541, 542);
+  await testAliasingViolationExample(aliasViolationExampleDoubleIfs, "Deze opdracht die het list-object c muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als c", 954, 955);
+  await testAliasingViolationExample(aliasViolationExampleWhileWithIf, "Deze opdracht die het list-object d muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als d", 1224, 1225);
+  await testAliasingViolationExample(aliasViolationExampleIfBasic, "Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a", 525, 526);
+  await testAliasingViolationExample(aliasViolationExampleLocalVarsInWhile, "Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a", 415, 416);
+  await testAliasingViolationExample(aliasViolationExampleViolationInLastLoopOfLus, "Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a", 994, 995);
+  await testAliasingViolationExample(aliasViolationExampleDoubleWhileLusMultipleLoopings, "Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a", 803, 804);
+  await testAliasingViolationExample(aliasViolationExampleSingleWhileLusMultipleLoopings, "Deze opdracht die het list-object b muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als b", 752, 753);
   console.log("All alias violation error tests passed!");
 }
 
@@ -5805,105 +5829,141 @@ async function runUnitTests() {
     if (!b)
       throw new Error("Test case assertion failed");
   }
-  
+
   let mayAliasRelation = new MayAliasRelation();
   mayAliasRelation = new MayAliasRelation(ImmutableSet.of());
-  assert(mayAliasRelation.mayAliasSets.equals(ImmutableSet.of()));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of())));
   mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b")));
-  assert(mayAliasRelation.mayAliasSets.equals(ImmutableSet.of(ImmutableSet.of("a","b"))));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b")))));
   mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a")));
-  assert(mayAliasRelation.mayAliasSets.equals(ImmutableSet.of()));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("b","a","c"),ImmutableSet.of("d","e","c")));
-  assert(mayAliasRelation.mayAliasSets.equals(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("c","d","e"))));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of())));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("b","a","c"), ImmutableSet.of("d","e","c")));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("c","d","e")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of());
+  let otherMayAliasRelation = new MayAliasRelation(ImmutableSet.of());
+  assert(mayAliasRelation.equals(otherMayAliasRelation));
+  otherMayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b")));
+  assert(!mayAliasRelation.equals(otherMayAliasRelation));
+  assert(!otherMayAliasRelation.equals(mayAliasRelation));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b")));
+  otherMayAliasRelation = new MayAliasRelation(ImmutableSet.of());
+  assert(!otherMayAliasRelation.equals(mayAliasRelation));
+  assert(!mayAliasRelation.equals(otherMayAliasRelation));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b")));
+  otherMayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("b","a")));
+  assert(mayAliasRelation.equals(otherMayAliasRelation));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b"), ImmutableSet.of("c","b")));
+  otherMayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("c","b"), ImmutableSet.of("a","b")));
+  assert(mayAliasRelation.equals(otherMayAliasRelation));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c","d")));
+  otherMayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("b","d","a","c")));
+  assert(mayAliasRelation.equals(otherMayAliasRelation));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b"), ImmutableSet.of("b","c"), ImmutableSet.of("c","d")));
+  otherMayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("d","c"), ImmutableSet.of("c","b"), ImmutableSet.of("b","a")));
+  assert(mayAliasRelation.equals(otherMayAliasRelation));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("d","c")));
+  otherMayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","d"), ImmutableSet.of("b","c")));
+  assert(!mayAliasRelation.equals(otherMayAliasRelation));
+  assert(!otherMayAliasRelation.equals(mayAliasRelation));
   mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b")));
   mayAliasRelation = mayAliasRelation.addMayAliasLink("c","a");
-  assert(mayAliasRelation.mayAliasSets.equals(ImmutableSet.of(ImmutableSet.of("a","b","c"))));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c")))));
   mayAliasRelation = mayAliasRelation.addMayAliasLink("a","d");
-  assert(mayAliasRelation.mayAliasSets.equals(ImmutableSet.of(ImmutableSet.of("b","c"),ImmutableSet.of("a","d"))));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("b","c"), ImmutableSet.of("a","d")))));
   mayAliasRelation = mayAliasRelation.addMayAliasLink("b","c");
-  assert(mayAliasRelation.mayAliasSets.equals(ImmutableSet.of(ImmutableSet.of("b","c"),ImmutableSet.of("a","d"))));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("b","c"), ImmutableSet.of("a","d")))));
   mayAliasRelation = mayAliasRelation.addMayAliasLink("a","b");
-  assert(mayAliasRelation.mayAliasSets.equals(ImmutableSet.of(ImmutableSet.of("a","b","c"))));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c")))));
   mayAliasRelation = mayAliasRelation.addMayAliasLink("d","e");
-  assert(mayAliasRelation.mayAliasSets.equals(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("d","e"))));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("c","d")));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("d","e")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("c","d")));
   mayAliasRelation = mayAliasRelation.addMayAliasLink("c","d");
-  assert(mayAliasRelation.mayAliasSets.equals(ImmutableSet.of(ImmutableSet.of("a","b"),ImmutableSet.of("c","d"))));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b"), ImmutableSet.of("c","d")))));
   mayAliasRelation = mayAliasRelation.addMayAliasLink("c","a");
-  assert(mayAliasRelation.mayAliasSets.equals(ImmutableSet.of(ImmutableSet.of("a","b","c"))));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("c","d"),ImmutableSet.of("a","d")));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("c","d"), ImmutableSet.of("a","d")));
   mayAliasRelation = mayAliasRelation.addMayAliasLink("a","d");
-  assert(mayAliasRelation.mayAliasSets.equals(ImmutableSet.of(ImmutableSet.of("b","c"),ImmutableSet.of("a","c","d"))));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("c","d"),ImmutableSet.of("a","d")));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("b","c"), ImmutableSet.of("a","c","d")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("c","d"), ImmutableSet.of("a","d")));
   mayAliasRelation = mayAliasRelation.addMayAliasLink("a","a");
-  assert(mayAliasRelation.mayAliasSets.equals(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("c","d"),ImmutableSet.of("a","d"))));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","z"),ImmutableSet.of("b","e","z")));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("c","d"), ImmutableSet.of("a","d")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","z"), ImmutableSet.of("b","e","z")));
   mayAliasRelation = mayAliasRelation.addMayAliasLink("a","e");
-  assert(mayAliasRelation.mayAliasSets.equals(ImmutableSet.of(ImmutableSet.of("a","b","e","z"))));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("a","d")));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","e","z")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("a","d")));
   mayAliasRelation = mayAliasRelation.keepOnlyVariables(ImmutableSet(["a","b","c","d","result"]));
-  assert(mayAliasRelation.mayAliasSets.equals(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("a","d"))));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("a","d")))));
   mayAliasRelation = mayAliasRelation.keepOnlyVariables(ImmutableSet(["b","c","d","result"]));
-  assert(mayAliasRelation.mayAliasSets.equals(ImmutableSet.of(ImmutableSet.of("b","c"))));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c","d"),ImmutableSet.of("a","d","e")));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("b","c")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c","d"), ImmutableSet.of("a","d","e")));
   mayAliasRelation = mayAliasRelation.keepOnlyVariables(ImmutableSet(["a","b","c","d"]));
-  assert(mayAliasRelation.mayAliasSets.equals(ImmutableSet.of(ImmutableSet.of("a","b","c","d"))));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","d","l","p"),ImmutableSet.of("a","x"),ImmutableSet.of("x","y","z"),));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c","d")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","d","l","p"), ImmutableSet.of("a","x"), ImmutableSet.of("x","y","z"),));
   mayAliasRelation = mayAliasRelation.keepOnlyVariables(ImmutableSet(["a","l","p"]));
-  assert(mayAliasRelation.mayAliasSets.equals(ImmutableSet.of(ImmutableSet.of("a","l","p"))));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("a","d")));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","l","p")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("a","d")));
   mayAliasRelation = mayAliasRelation.removeVariable("e");
-  assert(mayAliasRelation.mayAliasSets.equals(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("a","d"))));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("a","d")))));
   mayAliasRelation = mayAliasRelation.removeVariable("c");
-  assert(mayAliasRelation.mayAliasSets.equals(ImmutableSet.of(ImmutableSet.of("a","b"),ImmutableSet.of("a","d"))));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b"), ImmutableSet.of("a","d")))));
   mayAliasRelation = mayAliasRelation.removeVariable("b");
-  assert(mayAliasRelation.mayAliasSets.equals(ImmutableSet.of(ImmutableSet.of("a","d"))));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","d"),ImmutableSet.of("a","d","e")));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","d")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","d"), ImmutableSet.of("a","d","e")));
   mayAliasRelation = mayAliasRelation.removeVariable("e");
-  assert(mayAliasRelation.mayAliasSets.equals(ImmutableSet.of(ImmutableSet.of("a","b","d"))));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b"),ImmutableSet.of("b","d"),ImmutableSet.of("b","d","e")));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","d")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b"), ImmutableSet.of("b","d"), ImmutableSet.of("b","d","e")));
   mayAliasRelation = mayAliasRelation.removeVariable("b");
-  assert(mayAliasRelation.mayAliasSets.equals(ImmutableSet.of(ImmutableSet.of("d","e"))));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("d","e")))));
   mayAliasRelation = new MayAliasRelation(ImmutableSet.of());
   let mayAliasRelationToCombine = new MayAliasRelation(ImmutableSet.of());
   mayAliasRelation = mayAliasRelation.combineWithMayAliasRelation(mayAliasRelationToCombine);
-  assert(mayAliasRelation.mayAliasSets.equals(ImmutableSet.of()));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of())));
   mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","d")));
   mayAliasRelationToCombine = new MayAliasRelation(ImmutableSet.of());
   mayAliasRelation = mayAliasRelation.combineWithMayAliasRelation(mayAliasRelationToCombine);
-  assert(mayAliasRelation.mayAliasSets.equals(ImmutableSet.of(ImmutableSet.of("a","d"))));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","d")))));
   mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","d")));
   mayAliasRelationToCombine = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","c")));
   mayAliasRelation = mayAliasRelation.combineWithMayAliasRelation(mayAliasRelationToCombine);
-  assert(mayAliasRelation.mayAliasSets.equals(ImmutableSet.of(ImmutableSet.of("a","d"),ImmutableSet.of("a","c"))));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","d"), ImmutableSet.of("a","c")))));
   mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","d")));
   mayAliasRelationToCombine = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","c","d")));
   mayAliasRelation = mayAliasRelation.combineWithMayAliasRelation(mayAliasRelationToCombine);
-  assert(mayAliasRelation.mayAliasSets.equals(ImmutableSet.of(ImmutableSet.of("a","c","d"))));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","c","d")))));
   mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c","d")));
   mayAliasRelationToCombine = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","d")));
   mayAliasRelation = mayAliasRelation.combineWithMayAliasRelation(mayAliasRelationToCombine);
-  assert(mayAliasRelation.mayAliasSets.equals(ImmutableSet.of(ImmutableSet.of("a","b","c","d"))));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","d"),ImmutableSet.of("b","d")));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c","d")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","d"), ImmutableSet.of("b","d")));
   mayAliasRelationToCombine = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","e")));
   mayAliasRelation = mayAliasRelation.combineWithMayAliasRelation(mayAliasRelationToCombine);
-  assert(mayAliasRelation.mayAliasSets.equals(ImmutableSet.of(ImmutableSet.of("a","d"),ImmutableSet.of("b","d"),ImmutableSet.of("a","b","e"))));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("b","d")));
-  mayAliasRelationToCombine = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("b","d"),ImmutableSet.of("a","b"),ImmutableSet.of("d","e")));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","d"), ImmutableSet.of("b","d"), ImmutableSet.of("a","b","e")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("b","d")));
+  mayAliasRelationToCombine = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("b","d"), ImmutableSet.of("a","b"), ImmutableSet.of("d","e")));
   mayAliasRelation = mayAliasRelation.combineWithMayAliasRelation(mayAliasRelationToCombine);
-  assert(mayAliasRelation.mayAliasSets.equals(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("b","d"),ImmutableSet.of("d","e"))));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("b","d"), ImmutableSet.of("d","e")))));
   mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c")));
-  mayAliasRelationToCombine = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b"),ImmutableSet.of("b","c"),ImmutableSet.of("d","e")));
+  mayAliasRelationToCombine = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b"), ImmutableSet.of("b","c"), ImmutableSet.of("d","e")));
   mayAliasRelation = mayAliasRelation.combineWithMayAliasRelation(mayAliasRelationToCombine);
-  assert(mayAliasRelation.mayAliasSets.equals(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("d","e"))));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b"),ImmutableSet.of("b","c")));
-  mayAliasRelationToCombine = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("d","e")));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("d","e")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b"), ImmutableSet.of("b","c")));
+  mayAliasRelationToCombine = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("d","e")));
   mayAliasRelation = mayAliasRelation.combineWithMayAliasRelation(mayAliasRelationToCombine);
-  assert(mayAliasRelation.mayAliasSets.equals(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("d","e"))));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"),ImmutableSet.of("a","c","d"),ImmutableSet.of("a","b","c","e"),ImmutableSet.of("b","d","e")));
-  mayAliasRelationToCombine = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","c"),ImmutableSet.of("a","b","d"),ImmutableSet.of("b","d","e")));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("d","e")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("a","c","d"), ImmutableSet.of("a","b","c","e"), ImmutableSet.of("b","d","e")));
+  mayAliasRelationToCombine = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","c"), ImmutableSet.of("a","b","d"), ImmutableSet.of("b","d","e")));
   mayAliasRelation = mayAliasRelation.combineWithMayAliasRelation(mayAliasRelationToCombine);
-  assert(mayAliasRelation.mayAliasSets.equals(ImmutableSet.of(ImmutableSet.of("a","c","d"),ImmutableSet.of("a","b","d"),ImmutableSet.of("a","b","c","e"),ImmutableSet.of("b","d","e"))));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","c","d"), ImmutableSet.of("a","b","d"), ImmutableSet.of("a","b","c","e"), ImmutableSet.of("b","d","e")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b")));
+  assert(mayAliasRelation.getMayAliasesOfVariable("c").equals(ImmutableSet.of()));
+  assert(mayAliasRelation.getMayAliasesOfVariable("b").equals(ImmutableSet.of("a")));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b"), ImmutableSet.of("b","c")));
+  assert(mayAliasRelation.getMayAliasesOfVariable("b").equals(ImmutableSet.of("a","c")));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("d","e","f"), ImmutableSet.of("g","h"), ImmutableSet.of("a","g")));
+  assert(mayAliasRelation.getMayAliasesOfVariable("a").equals(ImmutableSet.of("b","c","g")));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("a","c","d"), ImmutableSet.of("a","b","c","e"), ImmutableSet.of("b","d","e")));
+  assert(mayAliasRelation.getMayAliasesOfVariable("a").equals(ImmutableSet.of("b","c","d","e")));
+  assert(mayAliasRelation.getMayAliasesOfVariable("b").equals(ImmutableSet.of("a","c","d","e")));
   console.log("All Unit tests passed!");
 }
 

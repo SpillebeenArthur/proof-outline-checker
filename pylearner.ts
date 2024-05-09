@@ -1364,18 +1364,17 @@ class MayAliasRelation {
    * @invar a may-alias-set is never a subset of another may-aliast-set
    * @invar a may alias-set consists of at least two variables
    */
-  readonly mayAliasSets:  Immutable.Set< Immutable.Set<string>>;
+  private readonly mayAliasSets:  Immutable.Set< Immutable.Set<string>>;
 
   /**
    * Constructor to create may-alias-relation that relates variable names if and only if variables are potential aliases by given links.
    * 
    * @param mayAliasSets may-alias-sets to be initialized with
-   * @pre An element of the given set mayAliasSets may not be a subset of another element.
    */
   constructor(mayAliasSets?: Immutable.Set<Immutable.Set<string>>) {
     if (mayAliasSets) {
-      mayAliasSets = mayAliasSets.filter(s => s.size > 1);
-      this.mayAliasSets = mayAliasSets;
+      this.mayAliasSets = mayAliasSets.filter(s => s.size > 1);
+      this.mayAliasSets = this.removeSubsets();
     } else 
       this.mayAliasSets = ImmutableSet();
   }
@@ -1390,7 +1389,7 @@ class MayAliasRelation {
     let newMayAliasSets: Immutable.Set<Immutable.Set<string>> = ImmutableSet();
     newMayAliasSets = this.mayAliasSets.map(s => s.filter(v => variable != v)).filter(s => s.size > 1);
     let newMayAliasRelation = new MayAliasRelation(newMayAliasSets);
-    return newMayAliasRelation.removeSubsets();
+    return newMayAliasRelation;
   }
   
   /**
@@ -1403,7 +1402,7 @@ class MayAliasRelation {
     let newMayAliasSets: Immutable.Set<Immutable.Set<string>> = ImmutableSet();
     newMayAliasSets = this.mayAliasSets.map(s => s.filter(v => variables.includes(v))).filter(s => s.size > 1);
     let newMayAliasRelation = new MayAliasRelation(newMayAliasSets);
-    return newMayAliasRelation.removeSubsets();
+    return newMayAliasRelation;
   }
   
   /**
@@ -1419,26 +1418,23 @@ class MayAliasRelation {
     const rvHasAlias = variables.includes(rv);
     let newMayAliasSets : Immutable.Set<Immutable.Set<string>> =  ImmutableSet();
     if (!lvHasAlias&&!rvHasAlias) {
-      let newMayAliasSet =  Immutable.Set.of(lv,rv);
+      let newMayAliasSet =  Immutable.Set.of(lv, rv);
       newMayAliasSets = this.mayAliasSets.add(newMayAliasSet);
-    }
-    else if (!lvHasAlias&&rvHasAlias) {
+    } else if (!lvHasAlias&&rvHasAlias) {
       this.mayAliasSets.forEach(s => {      
         if (s.includes(rv))
           s = s.add(lv);
         newMayAliasSets = newMayAliasSets.add(s);
       });
-    }
-    else if (lvHasAlias&&!rvHasAlias) {
+    } else if (lvHasAlias&&!rvHasAlias) {
       this.mayAliasSets.forEach(s => {
         if ( s.includes(lv))
           s = s.delete(lv);
         newMayAliasSets = newMayAliasSets.add(s);
       });
-      const newMayAliasSet = ImmutableSet.of(lv,rv);
+      const newMayAliasSet = ImmutableSet.of(lv, rv);
       newMayAliasSets = newMayAliasSets.add(newMayAliasSet);
-    }
-    else { 
+    } else { 
       this.mayAliasSets.forEach(s => {
         let newMayAliasSet = s;
         if (s.includes(lv)&&!s.includes(rv))
@@ -1449,8 +1445,7 @@ class MayAliasRelation {
       });
     }
     newMayAliasSets =  newMayAliasSets.filter(s => s.size>1);
-    let newMayAliasRelation = new MayAliasRelation(newMayAliasSets);
-    newMayAliasRelation = newMayAliasRelation.removeSubsets();
+    const newMayAliasRelation = new MayAliasRelation(newMayAliasSets);
     return newMayAliasRelation;
   }
 
@@ -1459,7 +1454,7 @@ class MayAliasRelation {
    * 
    * @returns relation  
    */
-  private removeSubsets(): MayAliasRelation {
+  private removeSubsets(): Immutable.Set<Immutable.Set<string>> {
     let mayAliasSetsSubsetsRemoved: Immutable.Set<Immutable.Set<string>> =  ImmutableSet();
     let mayAliasSetsToCheck = this.mayAliasSets;
     for (var mayAliasSetToCheck of mayAliasSetsToCheck) {
@@ -1484,7 +1479,7 @@ class MayAliasRelation {
         mayAliasSetsToDelete = ImmutableSet();
       }
     }
-    return new MayAliasRelation(mayAliasSetsSubsetsRemoved);
+    return mayAliasSetsSubsetsRemoved;
   }
 
   /**
@@ -1496,8 +1491,7 @@ class MayAliasRelation {
   combineWithMayAliasRelation(o: MayAliasRelation): MayAliasRelation {
     let combinedMayAliasSets = this.mayAliasSets.concat(o.mayAliasSets);
     let combinedMayAliasRelation = new MayAliasRelation(combinedMayAliasSets);
-    const filtererdMayAlias = combinedMayAliasRelation.removeSubsets();
-    return filtererdMayAlias;
+    return combinedMayAliasRelation;
   }
 
   /**
@@ -2165,7 +2159,7 @@ function parseProofOutline(stmts: Statement[], i: number, precededByAssert: bool
     const previousStatement = stmts[i-1];
     if (!(previousStatement instanceof AssertStatement))
       return stmt.executionError(`Opdracht moet worden voorafgegaan door een assert statement`);
-    if (preconditionHasMayAlias(previousStatement.condition, lhs.target.name,stmt.mayAliasRelation))
+    if (preconditionHasMayAlias(previousStatement.condition, lhs.target.name, stmt.mayAliasRelation))
       return stmt.expr.executionError(`Deze opdracht die het list-object ${lhs_target.name} muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als ${lhs_target.name}`);
     let zeroIntLiteral = new IntLiteral(stmt.loc, 0);
     zeroIntLiteral.type = intType;
@@ -2213,18 +2207,17 @@ function collectVariablesInExpression(expr: Expression): Immutable.Set<string> {
   let collectedVars: Immutable.Set<string> = ImmutableSet();
   if (expr instanceof BinaryOperatorExpression)
     return collectVariablesInExpression(expr.leftOperand).concat(collectVariablesInExpression(expr.rightOperand));
-  else if (expr instanceof SubscriptExpression) 
+  else if (expr instanceof SubscriptExpression)
     return collectVariablesInExpression(expr.target).concat(collectVariablesInExpression(expr.index));
   else if (expr instanceof LenExpression)
     return collectVariablesInExpression(expr.target);
   else if (expr instanceof SliceExpression)
-    return collectVariablesInExpression(expr.target).concat(collectVariablesInExpression(expr.startIndex)).concat(collectVariablesInExpression(expr.endIndex)); 
+    return collectVariablesInExpression(expr.target).concat(collectVariablesInExpression(expr.startIndex)).concat(collectVariablesInExpression(expr.endIndex));
   else if (expr instanceof CallExpression) {
     collectedVars = expr.arguments.reduce((total, subExpr) => {
       return total.concat(collectVariablesInExpression(subExpr))
     }, Immutable.Set<string>());
-  }
-  else if (expr instanceof UnaryOperatorExpression)
+  } else if (expr instanceof UnaryOperatorExpression)
     return collectVariablesInExpression(expr.operand);
   else if (expr instanceof VariableExpression)
     collectedVars = ImmutableSet.of(expr.name);
@@ -2249,7 +2242,7 @@ function getOuterScopeVariables(outerScope: Scope): Immutable.Set<string> {
 }
 
 function performMayAliasAnalysisOnBlock(blockStatement: BlockStatement, previousStatementMaybeAliasRelation: MayAliasRelation): MayAliasRelation {
-  let mayAliasRelationBlock = performMayAliasAnalysis(blockStatement.stmts,0,previousStatementMaybeAliasRelation)!;
+  let mayAliasRelationBlock = performMayAliasAnalysis(blockStatement.stmts, 0, previousStatementMaybeAliasRelation)!;
   const scopeBlock = blockStatement.scope!;
   const localVars = ImmutableSet(Object.keys(scopeBlock!.bindings));
   const outerscopeVars = getOuterScopeVariables(scopeBlock.outerScope!);
@@ -2264,10 +2257,10 @@ function performMayAliasAnalysis(stmts: Statement[], i: number, previousStatemen
     stmt.mayAliasRelation = previousStatementMayAliasRelation;
     if (stmt instanceof ExpressionStatement) {
       if (stmt.expr instanceof AssignmentExpression && stmt.expr.op == '=' && stmt.expr.lhs instanceof VariableExpression) {
-        if (stmt.expr.rhs instanceof VariableExpression) 
+        if (stmt.expr.rhs instanceof VariableExpression)
           stmt.mayAliasRelation = stmt.mayAliasRelation.addMayAliasLink(stmt.expr.lhs.name, stmt.expr.rhs.name);
-        else 
-          stmt.mayAliasRelation = stmt.mayAliasRelation.removeVariable(stmt.expr.lhs.name);   
+        else
+          stmt.mayAliasRelation = stmt.mayAliasRelation.removeVariable(stmt.expr.lhs.name);
       }
     } else if (stmt instanceof IfStatement) {
       if (stmt.thenBody instanceof BlockStatement && stmt.elseBody instanceof BlockStatement &&  stmt.elseBody != null && stmt.thenBody != null) {
@@ -2288,9 +2281,9 @@ function performMayAliasAnalysis(stmts: Statement[], i: number, previousStatemen
         return performMayAliasAnalysis(stmts, i+1, mayAliasRelationWhileBlockCheck);
       }
     }
-    return performMayAliasAnalysis(stmts, i+1, stmt.mayAliasRelation); 
+    return performMayAliasAnalysis(stmts, i+1, stmt.mayAliasRelation);
   }
-  else 
+  else
     return previousStatementMayAliasRelation;
 }
 
@@ -5032,14 +5025,14 @@ expression: `fibonacci(7)`
 }, {
 title: 'Simple alias example',
 declarations: 
-  `def method():
+`def method():
 
-  assert [1] == [1] # PRECONDITIE
-  a = [1]
-  assert a == [1]
-  assert a == a
-  b = a
-  assert b == a # POSTCONDITIE
+    assert [1] == [1] # PRECONDITIE
+    a = [1]
+    assert a == [1]
+    assert a == a
+    b = a
+    assert b == a # POSTCONDITIE
 
 `,
 statements: 
@@ -5048,36 +5041,39 @@ expression: ``
 }, {
 title: 'breaking alias example',
 declarations: 
-  `def method():
-  assert [0] == [0] # PRECONDITIE
-  a = [0]
-  assert a == [0]
-  assert [1] == [1]
-  b = [1]
-  assert b == [1]
-  assert [1] == [1]
-  c = [1]
-  assert c == [1] 
-  assert a == a 
-  b = a
-  assert b == a 
-  assert [0] == [0] 
-  a = [0]
-  assert a == [0] # POSTCONDITIE
+`def method():
+  
+    assert [0] == [0] # PRECONDITIE
+    a = [0]
+    assert a == [0]
+    assert [1] == [1]
+    b = [1]
+    assert b == [1]
+    assert [1] == [1]
+    c = [1]
+    assert c == [1] 
+    assert a == a 
+    b = a
+    assert b == a 
+    assert [0] == [0] 
+    a = [0]
+    assert a == [0] # POSTCONDITIE
+
 `,
 statements: ``,
 expression: ``
 }, {
 title: 'while lus alias example, without proof outline',
 declarations: 
-  `def methode():
+`def methode(): 
+
     i = 0
     n = 3
     a = [1]
     b = [5]
     while  i < n:
-      b = a
-      i = i + 1
+        b = a
+        i = i + 1
 
 `,
 statements: ``,
@@ -5085,7 +5081,7 @@ expression: ``
 }, {
 title: 'if statement with different aliases example. aliases made in then en else block with known variables',
 declarations: 
-  `def method():
+`def method():
     assert [0] == [0] # PRECONDITIE
     a = [0]
     assert a == [0]
@@ -5100,51 +5096,50 @@ declarations:
     assert d == [1]
     assert True 
     if len(b) == 1:
-      assert True  and len(b) == 1
-      assert a == a
-      b=a
-      assert b == a
-      assert d == d
-      c=d
-      assert c == d
-      assert True 
+        assert True  and len(b) == 1
+        assert a == a
+        b=a
+        assert b == a
+        assert d == d
+        c=d
+        assert c == d
+        assert True 
     else:
-      assert True  and not len(b) == 1
-      assert a == a
-      b=a
-      assert b == a
-      assert a == a
-      c=a
-      assert c == a
-      assert a == a
-      d=a
-      assert d == a    
-      assert True
+        assert True  and not len(b) == 1
+        assert a == a
+        b=a
+        assert b == a
+        assert a == a
+        c=a
+        assert c == a
+        assert a == a
+        d=a
+        assert d == a    
+        assert True
     assert True # POSTCONDITIE
     
-
   `,
 statements: ``,
 expression: ``
-},
-{
+},{
 title: 'Correct use of aliasing',
 declarations: 
-    `def method():
-      assert [0] == [0] # PRECONDITIE
-      a = [0]
-      assert a == [0]
-      assert [1] == [1]
-      b = [1]
-      assert b == [1]
-      assert True 
-      if len(b) == 1:
+`# Wet Uitgesteld: b
+def method():
+    assert [0] == [0] # PRECONDITIE
+    a = [0]
+    assert a == [0]
+    assert [1] == [1]
+    b = [1]
+    assert b == [1]
+    assert True 
+    if len(b) == 1:
         assert True  and len(b) == 1
         assert a == a
         d=a
         assert d == a
         assert True 
-      else:
+    else:
         assert True  and not len(b) == 1
         assert a == a
         d=a
@@ -5153,234 +5148,228 @@ declarations:
         b=a
         assert b == a
         assert True
-      assert True
-      assert (b[:0] + [3] + b[0+1:])[0] == 3 # Uitgesteld
-      b[0] = 3
-      assert b[0] == 3  # POSTCONDITIE
+    assert True
+    assert (b[:0] + [3] + b[0+1:])[0] == 3 # Uitgesteld
+    b[0] = 3
+    assert b[0] == 3  # POSTCONDITIE
 
-      # Wet Uitgesteld: b
-    `,
+`,
 statements: ``,
 expression: ``
-},
-{
+},{
 title: 'Aliasing with If statement in If statement. Aliases made in different levels of then and else block with known variables',
 declarations: 
-      `def method():
-      assert [0] == [0] # PRECONDITIE
-      a = [0]
-      assert a == [0]
-      assert [1] == [1]
-      b = [1]
-      assert b == [1]
-      assert [1] == [1]
-      c = [1]
-      assert c == [1]
-      assert [1] == [1]
-      d = [1]
-      assert d == [1]
-      assert True 
-      if len(b) == 1:
+`def method():
+    assert [0] == [0] # PRECONDITIE
+    a = [0]
+    assert a == [0]
+    assert [1] == [1]
+    b = [1]
+    assert b == [1]
+    assert [1] == [1]
+    c = [1]
+    assert c == [1]
+    assert [1] == [1]
+    d = [1]
+    assert d == [1]
+    assert True 
+    if len(b) == 1:
         assert True  and len(b) == 1
         assert a == a
         b=a
         assert b == a
         assert True
         if len(a) == 2:
-          assert True and len(a) == 2
-          assert d == d
-          c=d
-          assert c == d
-          assert True
-        else :
-          assert True and not len(a) == 2
-          assert a == a
-          c=a
-          assert c == a
-          assert True 
+            assert True and len(a) == 2
+            assert d == d
+            c=d
+            assert c == d
+            assert True
+        else:
+            assert True and not len(a) == 2
+            assert a == a
+            c=a
+            assert c == a
+            assert True 
         assert True
         assert d == d
         c=d
         assert c == d
         assert True 
-      else:
+    else:
         assert True  and not len(b) == 1
         assert a == a
         d=a
         assert d == a   
         assert True
-      assert True # POSTCONDITIE
-  
-      `,
+    assert True # POSTCONDITIE
+
+`,
 statements: ``,
 expression: ``
-},
-{
+},{
 title: 'Aliasing with while statement full proof. correct use of aliasing.',
 declarations: 
-        `def methode():
-        assert 0 == 0 #PRECONDITIE
-        i = 0
-        assert i == 0
-        assert 5 == 5
-        n = 5
-        assert n == 5
-        assert [5,5,5]== [5,5,5]
-        a = [5,5,5]
-        assert a == [5,5,5]
-        assert i <= n # Uitgesteld
-        while  i < n:
-          oude_variant = n - i
-          assert i <= n and i < n and n - i == oude_variant
-          assert i < n and n - i == oude_variant and n - (i + 1) < n - i # Z
-          assert i + 1 <= n and 0 <= n - (i + 1) < oude_variant # Z op 1 of Herschrijven met 2 in 3
-          i = i + 1
-          assert i <= n and 0 <= n - i < oude_variant
-          assert [5] == [5]
-          b = [5]
-          assert b == [5]
-          assert [5,5] == [5,5]
-          c = [5,5]
-          assert c == [5,5]
-          assert True
-          if i == 4:
+`#Wet Uitgesteld : b
+def methode():
+    assert 0 == 0 #PRECONDITIE
+    i = 0
+    assert i == 0
+    assert 5 == 5
+    n = 5
+    assert n == 5
+    assert [5, 5, 5]== [5, 5, 5]
+    a = [5, 5, 5]
+    assert a == [5, 5, 5]
+    assert i <= n # Uitgesteld
+    while  i < n:
+        oude_variant = n - i
+        assert i <= n and i < n and n - i == oude_variant
+        assert i < n and n - i == oude_variant and n - (i + 1) < n - i # Z
+        assert i + 1 <= n and 0 <= n - (i + 1) < oude_variant # Z op 1 of Herschrijven met 2 in 3
+        i = i + 1
+        assert i <= n and 0 <= n - i < oude_variant
+        assert [5] == [5]
+        b = [5]
+        assert b == [5]
+        assert [5, 5] == [5, 5]
+        c = [5, 5]
+        assert c == [5, 5]
+        assert True
+        if i == 4:
             assert True and i == 4
             assert a == a
             b = a
             assert b == a
             assert True
-          else: 
+        else: 
             assert True and not i == 4
             assert True 
-          assert True
-          assert (a[:1] + [1] + a[1+1:])[1] == 1 and len(c) == 2 #Uitgesteld
-          a[1] = 1 
-          assert a[1] == 1 and len(c) == 2
-          assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
-        assert i <= n and not i < n #POSTCONDITIE
-        
-        #Wet Uitgesteld : b
-        `,
+        assert True
+        assert (a[:1] + [1] + a[1+1:])[1] == 1 and len(c) == 2 #Uitgesteld
+        a[1] = 1 
+        assert a[1] == 1 and len(c) == 2
+        assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
+    assert i <= n and not i < n #POSTCONDITIE
+
+`,
 statements: ``,
 expression: ``
-},
-{
-title: 'Aliasing with double while loop. ',
+},{
+title: 'Aliasing with double while loop',
 declarations: 
-          `def methode():
-          assert 0 == 0 #PRECONDITIE
-          i = 0
-          assert i == 0
-          assert 0 == 0
-          j = 0
-          assert j == 0
-          assert 5 == 5
-          n = 5
-          assert n == 5
-          assert [5,5,5]== [5,5,5]
-          a = [5,5,5]
-          assert a == [5,5,5]
-          assert i <= n # Uitgesteld
-          while  i < n:
-            oude_variant = n - i
-            assert i <= n and i < n and n - i == oude_variant
-            assert i < n and n - i == oude_variant and n - (i + 1) < n - i # Z
-            assert i + 1 <= n and 0 <= n - (i + 1) < oude_variant # Z op 1 of Herschrijven met 2 in 3
-            i = i + 1
-            assert i <= n and 0 <= n - i < oude_variant
-            assert [1,5,5]== [1,5,5]
-            b = [1,5,5]
-            assert b == [1,5,5]
-            assert j <= n # Uitgesteld
-            while  j < n:
-              oude_variant2 = n - j
-              assert j <= n and j < n and n - j == oude_variant2
-              assert j < n and n - j == oude_variant2 and n - (j + 1) < n - j # Z
-              assert j + 1 <= n and 0 <= n - (j + 1) < oude_variant2 # Z op 1 of Herschrijven met 2 in 3
-              j = j + 1
-              assert j <= n and 0 <= n - j < oude_variant2
-              assert a == a
-              c = a
-              assert c == a
-              assert True
-              if i == 4 and j == 1:
+`#Wet Uitgesteld : b
+def methode():
+    assert 0 == 0 #PRECONDITIE
+    i = 0
+    assert i == 0
+    assert 0 == 0
+    j = 0
+    assert j == 0
+    assert 5 == 5
+    n = 5
+    assert n == 5
+    assert [5, 5, 5]== [5, 5, 5]
+    a = [5, 5, 5]
+    assert a == [5, 5, 5]
+    assert i <= n # Uitgesteld
+    while  i < n:
+        oude_variant = n - i
+        assert i <= n and i < n and n - i == oude_variant
+        assert i < n and n - i == oude_variant and n - (i + 1) < n - i # Z
+        assert i + 1 <= n and 0 <= n - (i + 1) < oude_variant # Z op 1 of Herschrijven met 2 in 3
+        i = i + 1
+        assert i <= n and 0 <= n - i < oude_variant
+        assert [1, 5, 5]== [1, 5, 5]
+        b = [1, 5, 5]
+        assert b == [1, 5, 5]
+        assert j <= n # Uitgesteld
+        while  j < n:
+            oude_variant2 = n - j
+            assert j <= n and j < n and n - j == oude_variant2
+            assert j < n and n - j == oude_variant2 and n - (j + 1) < n - j # Z
+            assert j + 1 <= n and 0 <= n - (j + 1) < oude_variant2 # Z op 1 of Herschrijven met 2 in 3
+            j = j + 1
+            assert j <= n and 0 <= n - j < oude_variant2
+            assert a == a
+            c = a
+            assert c == a
+            assert True
+            if i == 4 and j == 1:
                 assert True and i == 4 and j == 1
-                assert [1,2,3] == [1,2,3]
-                c = [1,2,3]
-                assert c == [1,2,3]
+                assert [1, 2, 3] == [1, 2, 3]
+                c = [1, 2, 3]
+                assert c == [1, 2, 3]
                 assert True
-              else: 
+            else: 
                 assert True and not (i == 4 and j == 1)
                 assert True 
-              assert True
-              assert (a[:1] + [0] + a[1+1:])[1] == 0 and b[0] == 1 #Uitgesteld
-              a[1] = 0 
-              assert a[1] == 0 and b[0] == 1
-              assert j <= n and 0 <= n - j < oude_variant2 #Uitgesteld
-            assert j <= n and not j < n 
-            
-            assert [1,1,1] == [1,1,1]
-            d = [1,1,1]
-            assert d == [1,1,1]
-            assert (b[:1] + [0] + b[1+1:])[1] == 0 and d[0] == 1 #Uitgesteld
-            b[1] = 0 
-            assert b[1] == 0 and d[0] == 1
-            assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
-          assert i <= n and not i < n #POSTCONDITIE
-          
-          #Wet Uitgesteld : b
-        `,
+            assert True
+            assert (a[:1] + [0] + a[1+1:])[1] == 0 and b[0] == 1 #Uitgesteld
+            a[1] = 0 
+            assert a[1] == 0 and b[0] == 1
+            assert j <= n and 0 <= n - j < oude_variant2 #Uitgesteld
+        assert j <= n and not j < n 
+        assert [1, 1, 1] == [1, 1, 1]
+        d = [1, 1, 1]
+        assert d == [1, 1, 1]
+        assert (b[:1] + [0] + b[1+1:])[1] == 0 and d[0] == 1 #Uitgesteld
+        b[1] = 0 
+        assert b[1] == 0 and d[0] == 1
+        assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
+    assert i <= n and not i < n #POSTCONDITIE
+
+`,
 statements: ``,
 expression: ``
-},
-{
+},{
 title: 'Aliasing with double while loop. Makes b and a aliases at end of biggest loop, but b is re-initialised every start of biggest loop. So there is no alias violation in smaller loop',
 declarations: 
-          `def methode():
-          assert 0 == 0 #PRECONDITIE
-          i = 0
-          assert i == 0
-          assert 0 == 0
-          j = 0
-          assert j == 0
-          assert 5 == 5
-          n = 5
-          assert n == 5
-          assert [5,5,5]== [5,5,5]
-          a = [5,5,5]
-          assert a == [5,5,5]
-          assert i <= n # Uitgesteld
-          while  i < n:
-            oude_variant = n - i
-            assert i <= n and i < n and n - i == oude_variant
-            assert i < n and n - i == oude_variant and n - (i + 1) < n - i # Z
-            assert i + 1 <= n and 0 <= n - (i + 1) < oude_variant # Z op 1 of Herschrijven met 2 in 3
-            i = i + 1
-            assert i <= n and 0 <= n - i < oude_variant
-            assert [1,5,5]== [1,5,5]
-            b = [1,5,5]
-            assert b == [1,5,5]
-            assert j <= n # Uitgesteld
-            while  j < n:
-              oude_variant2 = n - j
-              assert j <= n and j < n and n - j == oude_variant2
-              assert j < n and n - j == oude_variant2 and n - (j + 1) < n - j # Z
-              assert j + 1 <= n and 0 <= n - (j + 1) < oude_variant2 # Z op 1 of Herschrijven met 2 in 3
-              j = j + 1
-              assert j <= n and 0 <= n - j < oude_variant2
-              assert (a[:1] + [0] + a[1+1:])[1] == 0 and b[0] == 1 #Uitgesteld
-              a[1] = 0 
-              assert a[1] == 0 and b[0] == 1
-              assert j <= n and 0 <= n - j < oude_variant2 #Uitgesteld
-            assert j <= n and not j < n
-            assert a == a
-            b = a
-            assert b == a
-            assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
-          assert i <= n and not i < n #POSTCONDITIE
-          
-          #Wet Uitgesteld : b
-        `,
+`#Wet Uitgesteld : b
+def methode():
+    assert 0 == 0 #PRECONDITIE
+    i = 0
+    assert i == 0
+    assert 0 == 0
+    j = 0
+    assert j == 0
+    assert 5 == 5
+    n = 5
+    assert n == 5
+    assert [5, 5, 5]== [5, 5, 5]
+    a = [5, 5, 5]
+    assert a == [5, 5, 5]
+    assert i <= n # Uitgesteld
+    while  i < n:
+        oude_variant = n - i
+        assert i <= n and i < n and n - i == oude_variant
+        assert i < n and n - i == oude_variant and n - (i + 1) < n - i # Z
+        assert i + 1 <= n and 0 <= n - (i + 1) < oude_variant # Z op 1 of Herschrijven met 2 in 3
+        i = i + 1
+        assert i <= n and 0 <= n - i < oude_variant
+        assert [1, 5, 5]== [1, 5, 5]
+        b = [1, 5, 5]
+        assert b == [1, 5, 5]
+        assert j <= n # Uitgesteld
+        while  j < n:
+            oude_variant2 = n - j
+            assert j <= n and j < n and n - j == oude_variant2
+            assert j < n and n - j == oude_variant2 and n - (j + 1) < n - j # Z
+            assert j + 1 <= n and 0 <= n - (j + 1) < oude_variant2 # Z op 1 of Herschrijven met 2 in 3
+            j = j + 1
+            assert j <= n and 0 <= n - j < oude_variant2
+            assert (a[:1] + [0] + a[1+1:])[1] == 0 and b[0] == 1 #Uitgesteld
+            a[1] = 0 
+            assert a[1] == 0 and b[0] == 1
+            assert j <= n and 0 <= n - j < oude_variant2 #Uitgesteld
+        assert j <= n and not j < n
+        assert a == a
+        b = a
+        assert b == a
+        assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
+    assert i <= n and not i < n #POSTCONDITIE
+
+`,
 statements: ``,
 expression: ``
 },
@@ -5388,7 +5377,7 @@ expression: ``
 const aliasViolationExampleIfLocalVariable = {
   title: 'violation of aliasing rules IF',
   declarations: 
-    `def method(x):
+  `def method(x):
     assert [0] == [0] # PRECONDITIE
     a = [0]
     assert a == [0]
@@ -5416,14 +5405,15 @@ const aliasViolationExampleIfLocalVariable = {
     b[0] = 3
     assert b[0] == 3 and  a[0] == 1 # POSTCONDITIE
   # Wet Uitgesteld: b
-    `,
+  `,
   statements: ``,
   expression: ``
 };
 const aliasViolationExampleWhileWithIf = {
   title: 'violation of aliasing rules WHILE IF',
   declarations: 
-      `def methode():
+  `def methode():
+
       assert [8] == [8] #PRECONDITIE PARTIËLE CORRECTHEID
       d = [8]
       assert d == [8]
@@ -5441,26 +5431,26 @@ const aliasViolationExampleWhileWithIf = {
           assert len(a) == 1 and a[0] != b[0]
           assert True 
           if a[0] < b[0]:
-            assert True and a[0] < b[0]
-            assert a[0] == a[0]
-            i = a[0]
-            assert i == a[0]
-            assert (a[:0] + [i+1] + a[0+1:])[0] == i + 1
-            a[0] = i + 1
-            assert a[0] == i + 1
-            assert True 
+              assert True and a[0] < b[0]
+              assert a[0] == a[0]
+              i = a[0]
+              assert i == a[0]
+              assert (a[:0] + [i+1] + a[0+1:])[0] == i + 1
+              a[0] = i + 1
+              assert a[0] == i + 1
+              assert True 
           else:
-            assert True  and not a[0] < b[0]
-            assert b[0] == b[0]
-            i = b[0]
-            assert i == b[0]
-            assert (b[:0] + [i+1] + b[0+1:])[0] == i + 1
-            b[0] = i + 1
-            assert b[0] == i + 1
-            assert d == d
-            c = d
-            assert c == d
-            assert True
+              assert True  and not a[0] < b[0]
+              assert b[0] == b[0]
+              i = b[0]
+              assert i == b[0]
+              assert (b[:0] + [i+1] + b[0+1:])[0] == i + 1
+              b[0] = i + 1
+              assert b[0] == i + 1
+              assert d == d
+              c = d
+              assert c == d
+              assert True
           assert True
           assert len(a) == 1   
       assert len(a) == 1 and not a[0] != b[0]  
@@ -5468,37 +5458,38 @@ const aliasViolationExampleWhileWithIf = {
       d[0] = 5
       assert d[0] == 5 and c[0] == 5 # POSTCONDITIE
       return a[0]
-      `,
+
+  `,
   statements: ``,
   expression: ``
 };
 const aliasViolationExampleIfBasic = {
   title: 'violation of aliasing rules IF',
   declarations: 
-        `def method(x,y):
-        assert [0,2,3] == [0,2,3] # PRECONDITIE
-        a = [0,2,3]
-        assert a == [0,2,3]
-        assert  y == y
-        b = y
-        assert b == y
-        assert True
-        if x == True:
-          assert True and x == True
-          assert b == b
-          a = b
-          assert a == a    
-          assert True
-        else:
-          assert True and not x == True
-          assert True 
-        assert True
-        assert (a[:1] + [3] + a[1+1:])[1] == 3 and b[1] == 3 # Uitgesteld 
-        a[1] = 3
-        assert a[1] == 3 and b[1] == 3 # POSTCONDITIE
-        return a[0]
-      # Wet Uitgesteld: b
-        `,
+  `def method(x, y):
+  assert [0, 2, 3] == [0, 2, 3] # PRECONDITIE
+  a = [0, 2, 3]
+  assert a == [0, 2, 3]
+  assert  y == y
+  b = y
+  assert b == y
+  assert True
+  if x == True:
+    assert True and x == True
+    assert b == b
+    a = b
+    assert a == a    
+    assert True
+  else:
+    assert True and not x == True
+    assert True 
+  assert True
+  assert (a[:1] + [3] + a[1+1:])[1] == 3 and b[1] == 3 # Uitgesteld 
+  a[1] = 3
+  assert a[1] == 3 and b[1] == 3 # POSTCONDITIE
+  return a[0]
+# Wet Uitgesteld: b
+  `,
   statements: ``,
   expression: ``
 };
@@ -5559,173 +5550,173 @@ const aliasViolationExampleDoubleIfs = {
 const aliasViolationExampleLocalVarsInWhile = {
   title: 'violation of aliasing rules while lus with the local variables in while lus causing alias violation',
   declarations: 
-      `def methode():
-      assert True #PRECONDITIE PARTIELE CORRECTHEID
-      assert 0 == 0
-      i = 0
-      assert i == i
-      assert True
-      while i == 0:
-        assert True and i == 0
-        assert [1,2,3] == [1,2,3]
-        a = [1,2,3]
-        assert a == [1,2,3]
-        assert a == a
-        b = a
-        assert b == a
-        assert (a[:i] + [5] + a[i+1:])[i] == 5 and b[i] == 5 # Uitgesteld
-        a[i] = 5
-        assert a[i] == 5 and b[i] == 5
-        assert 1 == 1
-        i = 1
-        assert i == 1
-        assert True
-      assert True and not i == 0 #POSTCONDITIE
-      # Wet Uitgesteld: b
-      `,
+  `def methode():
+  assert True #PRECONDITIE PARTIELE CORRECTHEID
+  assert 0 == 0
+  i = 0
+  assert i == i
+  assert True
+  while i == 0:
+    assert True and i == 0
+    assert [1, 2, 3] == [1, 2, 3]
+    a = [1, 2, 3]
+    assert a == [1, 2, 3]
+    assert a == a
+    b = a
+    assert b == a
+    assert (a[:i] + [5] + a[i+1:])[i] == 5 and b[i] == 5 # Uitgesteld
+    a[i] = 5
+    assert a[i] == 5 and b[i] == 5
+    assert 1 == 1
+    i = 1
+    assert i == 1
+    assert True
+  assert True and not i == 0 #POSTCONDITIE
+  # Wet Uitgesteld: b
+  `,
   statements: ``,
   expression: ``
 };
 const aliasViolationExampleViolationInLastLoopOfLus = {
   title: 'violation of aliasing rules while lus with the last loop of the lus causing a alias violation',
   declarations: 
-      `def methode():
-      assert 0 == 0 #PRECONDITIE
-      i = 0
-      assert i == 0
-      assert 5 == 5
-      n = 5
-      assert n == 5
-      assert [5,5,5]== [5,5,5]
-      a = [5,5,5]
-      assert a == [5,5,5]
-      assert i <= n # Uitgesteld
-      while  i < n:
-        oude_variant = n - i
-        assert i <= n and i < n and n - i == oude_variant
-        assert i < n and n - i == oude_variant and n - (i + 1) < n - i # Z
-        assert i + 1 <= n and 0 <= n - (i + 1) < oude_variant # Z op 1 of Herschrijven met 2 in 3
-        i = i + 1
-        assert i <= n and 0 <= n - i < oude_variant
-        assert [5] == [5]
-        b = [5]
-        assert b == [5]
-        assert True
-        if i == 4:
-          assert True and i == 4
-          assert a == a
-          b = a
-          assert b == a
-          assert True
-        else: 
-          assert True and not i == 4
-          assert True 
-        assert True
-        assert (a[:1] + [1] + a[1+1:])[1] == 1 and b == [5] #Uitgesteld
-        a[1] = 1 
-        assert a[1] == 1 and b == [5]
-        assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
-      assert i <= n and not i < n #POSTCONDITIE
-      
-      #Wet Uitgesteld : b
-      `,
+  `def methode():
+  assert 0 == 0 #PRECONDITIE
+  i = 0
+  assert i == 0
+  assert 5 == 5
+  n = 5
+  assert n == 5
+  assert [5, 5, 5]== [5, 5, 5]
+  a = [5, 5, 5]
+  assert a == [5, 5, 5]
+  assert i <= n # Uitgesteld
+  while  i < n:
+    oude_variant = n - i
+    assert i <= n and i < n and n - i == oude_variant
+    assert i < n and n - i == oude_variant and n - (i + 1) < n - i # Z
+    assert i + 1 <= n and 0 <= n - (i + 1) < oude_variant # Z op 1 of Herschrijven met 2 in 3
+    i = i + 1
+    assert i <= n and 0 <= n - i < oude_variant
+    assert [5] == [5]
+    b = [5]
+    assert b == [5]
+    assert True
+    if i == 4:
+      assert True and i == 4
+      assert a == a
+      b = a
+      assert b == a
+      assert True
+    else: 
+      assert True and not i == 4
+      assert True 
+    assert True
+    assert (a[:1] + [1] + a[1+1:])[1] == 1 and b == [5] #Uitgesteld
+    a[1] = 1 
+    assert a[1] == 1 and b == [5]
+    assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
+  assert i <= n and not i < n #POSTCONDITIE
+  
+  #Wet Uitgesteld : b
+  `,
   statements: ``,
   expression: ``
 };
 const aliasViolationExampleDoubleWhileLusMultipleLoopings = {
   title: 'violation of aliasing rules while double lus. Once you looped through the second lus an alias is made between a and b. Looping back through the first lus causes alias violation.',
   declarations: 
-      `def methode():
-      assert 0 == 0 #PRECONDITIE
-      i = 0
-      assert i == 0
-      assert 0 == 0
-      j = 0
-      assert j == 0
-      assert 5 == 5
-      n = 5
-      assert n == 5
-      assert [5,5,5]== [5,5,5]
-      a = [5,5,5]
-      assert a == [5,5,5]
-      assert [1,5,5]== [1,5,5]
-      b = [1,5,5]
-      assert b == [1,5,5]
-      assert i <= n # Uitgesteld
-      while  i < n:
-        oude_variant = n - i
-        assert i <= n and i < n and n - i == oude_variant
-        assert i < n and n - i == oude_variant and n - (i + 1) < n - i # Z
-        assert i + 1 <= n and 0 <= n - (i + 1) < oude_variant # Z op 1 of Herschrijven met 2 in 3
-        i = i + 1
-        assert i <= n and 0 <= n - i < oude_variant
-        assert (a[:1] + [0] + a[1+1:])[1] == 0 and b[0] == 1 #Uitgesteld
-        a[1] = 0 
-        assert a[1] == 0 and b[0] == 1
-        assert j <= n # Uitgesteld
-        while  j < n:
-          oude_variant2 = n - j
-          assert j <= n and j < n and n - j == oude_variant2
-          assert j < n and n - j == oude_variant2 and n - (j + 1) < n - j # Z
-          assert j + 1 <= n and 0 <= n - (j + 1) < oude_variant2 # Z op 1 of Herschrijven met 2 in 3
-          j = j + 1
-          assert j <= n and 0 <= n - j < oude_variant2
-          assert a == a
-          b = a
-          assert b == a
-          assert j <= n and 0 <= n - j < oude_variant2 #Uitgesteld
-        assert j <= n and not j < n
-        assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
-      assert i <= n and not i < n #POSTCONDITIE
-      
-      #Wet Uitgesteld : b
-      `,
+  `def methode():
+  assert 0 == 0 #PRECONDITIE
+  i = 0
+  assert i == 0
+  assert 0 == 0
+  j = 0
+  assert j == 0
+  assert 5 == 5
+  n = 5
+  assert n == 5
+  assert [5, 5, 5]== [5, 5, 5]
+  a = [5, 5, 5]
+  assert a == [5, 5, 5]
+  assert [1, 5, 5]== [1, 5, 5]
+  b = [1, 5, 5]
+  assert b == [1, 5, 5]
+  assert i <= n # Uitgesteld
+  while  i < n:
+    oude_variant = n - i
+    assert i <= n and i < n and n - i == oude_variant
+    assert i < n and n - i == oude_variant and n - (i + 1) < n - i # Z
+    assert i + 1 <= n and 0 <= n - (i + 1) < oude_variant # Z op 1 of Herschrijven met 2 in 3
+    i = i + 1
+    assert i <= n and 0 <= n - i < oude_variant
+    assert (a[:1] + [0] + a[1+1:])[1] == 0 and b[0] == 1 #Uitgesteld
+    a[1] = 0 
+    assert a[1] == 0 and b[0] == 1
+    assert j <= n # Uitgesteld
+    while  j < n:
+      oude_variant2 = n - j
+      assert j <= n and j < n and n - j == oude_variant2
+      assert j < n and n - j == oude_variant2 and n - (j + 1) < n - j # Z
+      assert j + 1 <= n and 0 <= n - (j + 1) < oude_variant2 # Z op 1 of Herschrijven met 2 in 3
+      j = j + 1
+      assert j <= n and 0 <= n - j < oude_variant2
+      assert a == a
+      b = a
+      assert b == a
+      assert j <= n and 0 <= n - j < oude_variant2 #Uitgesteld
+    assert j <= n and not j < n
+    assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
+  assert i <= n and not i < n #POSTCONDITIE
+  
+  #Wet Uitgesteld : b
+  `,
   statements: ``,
   expression: ``
 };
 const aliasViolationExampleSingleWhileLusMultipleLoopings = {
   title: 'violation of aliasing rules with while lus. One while lus with if statement where in then body an alias mayAliasSet  is made between a and b. In that case the following loop through the lus causes an alias violation  ',
   declarations: 
-      `def methode(x):
-      assert 0 == 0 #PRECONDITIE
-      i = 0
-      assert i == 0
-      assert 5 == 5
-      n = 5
-      assert n == 5
-      assert [5,5,5]== [5,5,5]
-      a = [5,5,5]
-      assert a == [5,5,5]
-      assert [1,5,5]== [1,5,5]
-      b = [1,5,5]
-      assert b == [1,5,5]
-      assert i <= n # Uitgesteld
-      while  i < n:
-        oude_variant = n - i
-        assert i <= n and i < n and n - i == oude_variant
-        assert i < n and n - i == oude_variant and n - (i + 1) < n - i # Z
-        assert i + 1 <= n and 0 <= n - (i + 1) < oude_variant # Z op 1 of Herschrijven met 2 in 3
-        i = i + 1
-        assert i <= n and 0 <= n - i < oude_variant
-        assert (b[:1] + [0] + b[1+1:])[1] == 0 and a[0] == 1 #Uitgesteld
-        b[1] = 0 
-        assert b[1] == 0 and a[0] == 1
-        assert True
-        if x == True:
-          assert True and x == True
-          assert b == b
-          a = b
-          assert a == a    
-          assert True
-        else:
-          assert True and not x == True
-          assert True 
-        assert True
-        assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
-      assert i <= n and not i < n #POSTCONDITIE
-      
-      #Wet Uitgesteld : b
-      `,
+  `def methode(x):
+  assert 0 == 0 #PRECONDITIE
+  i = 0
+  assert i == 0
+  assert 5 == 5
+  n = 5
+  assert n == 5
+  assert [5, 5, 5]== [5, 5, 5]
+  a = [5, 5, 5]
+  assert a == [5, 5, 5]
+  assert [1, 5, 5]== [1, 5, 5]
+  b = [1, 5, 5]
+  assert b == [1, 5, 5]
+  assert i <= n # Uitgesteld
+  while  i < n:
+    oude_variant = n - i
+    assert i <= n and i < n and n - i == oude_variant
+    assert i < n and n - i == oude_variant and n - (i + 1) < n - i # Z
+    assert i + 1 <= n and 0 <= n - (i + 1) < oude_variant # Z op 1 of Herschrijven met 2 in 3
+    i = i + 1
+    assert i <= n and 0 <= n - i < oude_variant
+    assert (b[:1] + [0] + b[1+1:])[1] == 0 and a[0] == 1 #Uitgesteld
+    b[1] = 0 
+    assert b[1] == 0 and a[0] == 1
+    assert True
+    if x == True:
+      assert True and x == True
+      assert b == b
+      a = b
+      assert a == a    
+      assert True
+    else:
+      assert True and not x == True
+      assert True 
+    assert True
+    assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
+  assert i <= n and not i < n #POSTCONDITIE
+  
+  #Wet Uitgesteld : b
+  `,
   statements: ``,
   expression: ``
 };
@@ -5779,7 +5770,7 @@ async function testExamples(examples: Example[]) {
   }
 }
 
-async function testAliasingViolationExample(example: Example,errorMessage: string,locStart:number,locEnd:number) {
+async function testAliasingViolationExample(example: Example, errorMessage: string, locStart: number, locEnd: number) {
   const {declarations, statements, expression} = example
   let decls = parseDeclarations(mkLocFactory(declarations), declarations, processComment);
   checkDeclarations(decls);
@@ -5801,11 +5792,11 @@ async function testAliasingViolationExample(example: Example,errorMessage: strin
   try {
     for (let m in toplevelMethods)
       toplevelMethods[m].checkProofOutlines(true);
-  } catch (error: any) { 
+  } catch (error: any) {
     exceptionCaught = true;
     if (error.msg != errorMessage || error.loc.start != locStart || error.loc.end != locEnd)
       throw new Error("Test alias violation case failed, caught incorrect error");
-  } 
+  }
   if (!exceptionCaught)
     throw new Error("Test alias violation case failed, expected an error to be thrown");
 }
@@ -5813,12 +5804,12 @@ async function testAliasingViolationExample(example: Example,errorMessage: strin
 async function testAliasingViolationExamples() {
   await testAliasingViolationExample(aliasViolationExampleIfLocalVariable, "Deze opdracht die het list-object b muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als b", 541, 542);
   await testAliasingViolationExample(aliasViolationExampleDoubleIfs, "Deze opdracht die het list-object c muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als c", 954, 955);
-  await testAliasingViolationExample(aliasViolationExampleWhileWithIf, "Deze opdracht die het list-object d muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als d", 1224, 1225);
-  await testAliasingViolationExample(aliasViolationExampleIfBasic, "Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a", 525, 526);
-  await testAliasingViolationExample(aliasViolationExampleLocalVarsInWhile, "Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a", 415, 416);
-  await testAliasingViolationExample(aliasViolationExampleViolationInLastLoopOfLus, "Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a", 994, 995);
-  await testAliasingViolationExample(aliasViolationExampleDoubleWhileLusMultipleLoopings, "Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a", 803, 804);
-  await testAliasingViolationExample(aliasViolationExampleSingleWhileLusMultipleLoopings, "Deze opdracht die het list-object b muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als b", 752, 753);
+  await testAliasingViolationExample(aliasViolationExampleWhileWithIf, "Deze opdracht die het list-object d muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als d", 1263, 1264);
+  await testAliasingViolationExample(aliasViolationExampleIfBasic, "Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a", 420, 421);
+  await testAliasingViolationExample(aliasViolationExampleLocalVarsInWhile, "Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a", 363, 364);
+  await testAliasingViolationExample(aliasViolationExampleViolationInLastLoopOfLus, "Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a", 870, 871);
+  await testAliasingViolationExample(aliasViolationExampleDoubleWhileLusMultipleLoopings, "Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a", 719, 720);
+  await testAliasingViolationExample(aliasViolationExampleSingleWhileLusMultipleLoopings, "Deze opdracht die het list-object b muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als b", 680, 681);
   console.log("All alias violation error tests passed!");
 }
 
@@ -5833,137 +5824,137 @@ async function runUnitTests() {
   let mayAliasRelation = new MayAliasRelation();
   mayAliasRelation = new MayAliasRelation(ImmutableSet.of());
   assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of())));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b")));
-  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b")));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b")))));
   mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a")));
   assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of())));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("b","a","c"), ImmutableSet.of("d","e","c")));
-  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("c","d","e")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("b", "a", "c"), ImmutableSet.of("d", "e", "c")));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b", "c"), ImmutableSet.of("c", "d", "e")))));
   mayAliasRelation = new MayAliasRelation(ImmutableSet.of());
   let otherMayAliasRelation = new MayAliasRelation(ImmutableSet.of());
   assert(mayAliasRelation.equals(otherMayAliasRelation));
-  otherMayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b")));
+  otherMayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b")));
   assert(!mayAliasRelation.equals(otherMayAliasRelation));
   assert(!otherMayAliasRelation.equals(mayAliasRelation));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b")));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b")));
   otherMayAliasRelation = new MayAliasRelation(ImmutableSet.of());
   assert(!otherMayAliasRelation.equals(mayAliasRelation));
   assert(!mayAliasRelation.equals(otherMayAliasRelation));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b")));
-  otherMayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("b","a")));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b")));
+  otherMayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("b", "a")));
   assert(mayAliasRelation.equals(otherMayAliasRelation));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b"), ImmutableSet.of("c","b")));
-  otherMayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("c","b"), ImmutableSet.of("a","b")));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b"), ImmutableSet.of("c", "b")));
+  otherMayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("c", "b"), ImmutableSet.of("a", "b")));
   assert(mayAliasRelation.equals(otherMayAliasRelation));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c","d")));
-  otherMayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("b","d","a","c")));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b", "c", "d")));
+  otherMayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("b", "d", "a", "c")));
   assert(mayAliasRelation.equals(otherMayAliasRelation));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b"), ImmutableSet.of("b","c"), ImmutableSet.of("c","d")));
-  otherMayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("d","c"), ImmutableSet.of("c","b"), ImmutableSet.of("b","a")));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b"), ImmutableSet.of("b", "c"), ImmutableSet.of("c", "d")));
+  otherMayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("d", "c"), ImmutableSet.of("c", "b"), ImmutableSet.of("b", "a")));
   assert(mayAliasRelation.equals(otherMayAliasRelation));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("d","c")));
-  otherMayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","d"), ImmutableSet.of("b","c")));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b", "c"), ImmutableSet.of("d", "c")));
+  otherMayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b", "d"), ImmutableSet.of("b", "c")));
   assert(!mayAliasRelation.equals(otherMayAliasRelation));
   assert(!otherMayAliasRelation.equals(mayAliasRelation));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b")));
-  mayAliasRelation = mayAliasRelation.addMayAliasLink("c","a");
-  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c")))));
-  mayAliasRelation = mayAliasRelation.addMayAliasLink("a","d");
-  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("b","c"), ImmutableSet.of("a","d")))));
-  mayAliasRelation = mayAliasRelation.addMayAliasLink("b","c");
-  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("b","c"), ImmutableSet.of("a","d")))));
-  mayAliasRelation = mayAliasRelation.addMayAliasLink("a","b");
-  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c")))));
-  mayAliasRelation = mayAliasRelation.addMayAliasLink("d","e");
-  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("d","e")))));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("c","d")));
-  mayAliasRelation = mayAliasRelation.addMayAliasLink("c","d");
-  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b"), ImmutableSet.of("c","d")))));
-  mayAliasRelation = mayAliasRelation.addMayAliasLink("c","a");
-  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c")))));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("c","d"), ImmutableSet.of("a","d")));
-  mayAliasRelation = mayAliasRelation.addMayAliasLink("a","d");
-  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("b","c"), ImmutableSet.of("a","c","d")))));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("c","d"), ImmutableSet.of("a","d")));
-  mayAliasRelation = mayAliasRelation.addMayAliasLink("a","a");
-  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("c","d"), ImmutableSet.of("a","d")))));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","z"), ImmutableSet.of("b","e","z")));
-  mayAliasRelation = mayAliasRelation.addMayAliasLink("a","e");
-  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","e","z")))));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("a","d")));
-  mayAliasRelation = mayAliasRelation.keepOnlyVariables(ImmutableSet(["a","b","c","d","result"]));
-  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("a","d")))));
-  mayAliasRelation = mayAliasRelation.keepOnlyVariables(ImmutableSet(["b","c","d","result"]));
-  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("b","c")))));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c","d"), ImmutableSet.of("a","d","e")));
-  mayAliasRelation = mayAliasRelation.keepOnlyVariables(ImmutableSet(["a","b","c","d"]));
-  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c","d")))));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","d","l","p"), ImmutableSet.of("a","x"), ImmutableSet.of("x","y","z"),));
-  mayAliasRelation = mayAliasRelation.keepOnlyVariables(ImmutableSet(["a","l","p"]));
-  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","l","p")))));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("a","d")));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b")));
+  mayAliasRelation = mayAliasRelation.addMayAliasLink("c", "a");
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b", "c")))));
+  mayAliasRelation = mayAliasRelation.addMayAliasLink("a", "d");
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("b", "c"), ImmutableSet.of("a", "d")))));
+  mayAliasRelation = mayAliasRelation.addMayAliasLink("b", "c");
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("b", "c"), ImmutableSet.of("a", "d")))));
+  mayAliasRelation = mayAliasRelation.addMayAliasLink("a", "b");
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b", "c")))));
+  mayAliasRelation = mayAliasRelation.addMayAliasLink("d", "e");
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b", "c"), ImmutableSet.of("d", "e")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b", "c"), ImmutableSet.of("c", "d")));
+  mayAliasRelation = mayAliasRelation.addMayAliasLink("c", "d");
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b"), ImmutableSet.of("c", "d")))));
+  mayAliasRelation = mayAliasRelation.addMayAliasLink("c", "a");
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b", "c")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b", "c"), ImmutableSet.of("c", "d"), ImmutableSet.of("a", "d")));
+  mayAliasRelation = mayAliasRelation.addMayAliasLink("a", "d");
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("b", "c"), ImmutableSet.of("a", "c", "d")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b", "c"), ImmutableSet.of("c", "d"), ImmutableSet.of("a", "d")));
+  mayAliasRelation = mayAliasRelation.addMayAliasLink("a", "a");
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b", "c"), ImmutableSet.of("c", "d"), ImmutableSet.of("a", "d")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b", "z"), ImmutableSet.of("b", "e", "z")));
+  mayAliasRelation = mayAliasRelation.addMayAliasLink("a", "e");
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b", "e", "z")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b", "c"), ImmutableSet.of("a", "d")));
+  mayAliasRelation = mayAliasRelation.keepOnlyVariables(ImmutableSet(["a", "b", "c", "d", "result"]));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b", "c"), ImmutableSet.of("a", "d")))));
+  mayAliasRelation = mayAliasRelation.keepOnlyVariables(ImmutableSet(["b", "c", "d", "result"]));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("b", "c")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b", "c", "d"), ImmutableSet.of("a", "d", "e")));
+  mayAliasRelation = mayAliasRelation.keepOnlyVariables(ImmutableSet(["a", "b", "c", "d"]));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b", "c", "d")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "d", "l", "p"), ImmutableSet.of("a", "x"), ImmutableSet.of("x", "y", "z"),));
+  mayAliasRelation = mayAliasRelation.keepOnlyVariables(ImmutableSet(["a", "l", "p"]));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "l", "p")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b", "c"), ImmutableSet.of("a", "d")));
   mayAliasRelation = mayAliasRelation.removeVariable("e");
-  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("a","d")))));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b", "c"), ImmutableSet.of("a", "d")))));
   mayAliasRelation = mayAliasRelation.removeVariable("c");
-  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b"), ImmutableSet.of("a","d")))));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b"), ImmutableSet.of("a", "d")))));
   mayAliasRelation = mayAliasRelation.removeVariable("b");
-  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","d")))));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","d"), ImmutableSet.of("a","d","e")));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "d")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b", "d"), ImmutableSet.of("a", "d", "e")));
   mayAliasRelation = mayAliasRelation.removeVariable("e");
-  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","d")))));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b"), ImmutableSet.of("b","d"), ImmutableSet.of("b","d","e")));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b", "d")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b"), ImmutableSet.of("b", "d"), ImmutableSet.of("b", "d", "e")));
   mayAliasRelation = mayAliasRelation.removeVariable("b");
-  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("d","e")))));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("d", "e")))));
   mayAliasRelation = new MayAliasRelation(ImmutableSet.of());
   let mayAliasRelationToCombine = new MayAliasRelation(ImmutableSet.of());
   mayAliasRelation = mayAliasRelation.combineWithMayAliasRelation(mayAliasRelationToCombine);
   assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of())));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","d")));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "d")));
   mayAliasRelationToCombine = new MayAliasRelation(ImmutableSet.of());
   mayAliasRelation = mayAliasRelation.combineWithMayAliasRelation(mayAliasRelationToCombine);
-  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","d")))));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","d")));
-  mayAliasRelationToCombine = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","c")));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "d")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "d")));
+  mayAliasRelationToCombine = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "c")));
   mayAliasRelation = mayAliasRelation.combineWithMayAliasRelation(mayAliasRelationToCombine);
-  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","d"), ImmutableSet.of("a","c")))));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","d")));
-  mayAliasRelationToCombine = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","c","d")));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "d"), ImmutableSet.of("a", "c")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "d")));
+  mayAliasRelationToCombine = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "c", "d")));
   mayAliasRelation = mayAliasRelation.combineWithMayAliasRelation(mayAliasRelationToCombine);
-  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","c","d")))));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c","d")));
-  mayAliasRelationToCombine = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","d")));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "c", "d")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b", "c", "d")));
+  mayAliasRelationToCombine = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "d")));
   mayAliasRelation = mayAliasRelation.combineWithMayAliasRelation(mayAliasRelationToCombine);
-  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c","d")))));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","d"), ImmutableSet.of("b","d")));
-  mayAliasRelationToCombine = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","e")));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b", "c", "d")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "d"), ImmutableSet.of("b", "d")));
+  mayAliasRelationToCombine = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b", "e")));
   mayAliasRelation = mayAliasRelation.combineWithMayAliasRelation(mayAliasRelationToCombine);
-  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","d"), ImmutableSet.of("b","d"), ImmutableSet.of("a","b","e")))));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("b","d")));
-  mayAliasRelationToCombine = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("b","d"), ImmutableSet.of("a","b"), ImmutableSet.of("d","e")));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "d"), ImmutableSet.of("b", "d"), ImmutableSet.of("a", "b", "e")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b", "c"), ImmutableSet.of("b", "d")));
+  mayAliasRelationToCombine = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("b", "d"), ImmutableSet.of("a", "b"), ImmutableSet.of("d", "e")));
   mayAliasRelation = mayAliasRelation.combineWithMayAliasRelation(mayAliasRelationToCombine);
-  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("b","d"), ImmutableSet.of("d","e")))));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c")));
-  mayAliasRelationToCombine = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b"), ImmutableSet.of("b","c"), ImmutableSet.of("d","e")));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b", "c"), ImmutableSet.of("b", "d"), ImmutableSet.of("d", "e")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b", "c")));
+  mayAliasRelationToCombine = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b"), ImmutableSet.of("b", "c"), ImmutableSet.of("d", "e")));
   mayAliasRelation = mayAliasRelation.combineWithMayAliasRelation(mayAliasRelationToCombine);
-  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("d","e")))));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b"), ImmutableSet.of("b","c")));
-  mayAliasRelationToCombine = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("d","e")));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b", "c"), ImmutableSet.of("d", "e")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b"), ImmutableSet.of("b", "c")));
+  mayAliasRelationToCombine = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b", "c"), ImmutableSet.of("d", "e")));
   mayAliasRelation = mayAliasRelation.combineWithMayAliasRelation(mayAliasRelationToCombine);
-  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("d","e")))));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("a","c","d"), ImmutableSet.of("a","b","c","e"), ImmutableSet.of("b","d","e")));
-  mayAliasRelationToCombine = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","c"), ImmutableSet.of("a","b","d"), ImmutableSet.of("b","d","e")));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b", "c"), ImmutableSet.of("d", "e")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b", "c"), ImmutableSet.of("a", "c", "d"), ImmutableSet.of("a", "b", "c", "e"), ImmutableSet.of("b", "d", "e")));
+  mayAliasRelationToCombine = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "c"), ImmutableSet.of("a", "b", "d"), ImmutableSet.of("b", "d", "e")));
   mayAliasRelation = mayAliasRelation.combineWithMayAliasRelation(mayAliasRelationToCombine);
-  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","c","d"), ImmutableSet.of("a","b","d"), ImmutableSet.of("a","b","c","e"), ImmutableSet.of("b","d","e")))));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b")));
+  assert(mayAliasRelation.equals(new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "c", "d"), ImmutableSet.of("a", "b", "d"), ImmutableSet.of("a", "b", "c", "e"), ImmutableSet.of("b", "d", "e")))));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b")));
   assert(mayAliasRelation.getMayAliasesOfVariable("c").equals(ImmutableSet.of()));
   assert(mayAliasRelation.getMayAliasesOfVariable("b").equals(ImmutableSet.of("a")));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b"), ImmutableSet.of("b","c")));
-  assert(mayAliasRelation.getMayAliasesOfVariable("b").equals(ImmutableSet.of("a","c")));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("d","e","f"), ImmutableSet.of("g","h"), ImmutableSet.of("a","g")));
-  assert(mayAliasRelation.getMayAliasesOfVariable("a").equals(ImmutableSet.of("b","c","g")));
-  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a","b","c"), ImmutableSet.of("a","c","d"), ImmutableSet.of("a","b","c","e"), ImmutableSet.of("b","d","e")));
-  assert(mayAliasRelation.getMayAliasesOfVariable("a").equals(ImmutableSet.of("b","c","d","e")));
-  assert(mayAliasRelation.getMayAliasesOfVariable("b").equals(ImmutableSet.of("a","c","d","e")));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b"), ImmutableSet.of("b", "c")));
+  assert(mayAliasRelation.getMayAliasesOfVariable("b").equals(ImmutableSet.of("a", "c")));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b", "c"), ImmutableSet.of("d", "e", "f"), ImmutableSet.of("g", "h"), ImmutableSet.of("a", "g")));
+  assert(mayAliasRelation.getMayAliasesOfVariable("a").equals(ImmutableSet.of("b", "c", "g")));
+  mayAliasRelation = new MayAliasRelation(ImmutableSet.of(ImmutableSet.of("a", "b", "c"), ImmutableSet.of("a", "c", "d"), ImmutableSet.of("a", "b", "c", "e"), ImmutableSet.of("b", "d", "e")));
+  assert(mayAliasRelation.getMayAliasesOfVariable("a").equals(ImmutableSet.of("b", "c", "d", "e")));
+  assert(mayAliasRelation.getMayAliasesOfVariable("b").equals(ImmutableSet.of("a", "c", "d", "e")));
   console.log("All Unit tests passed!");
 }
 

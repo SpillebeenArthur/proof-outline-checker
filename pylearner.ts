@@ -1387,7 +1387,7 @@ class MayAliasRelation {
    */
   removeVariable(variable: string): MayAliasRelation {
     let newMayAliasSets: Immutable.Set<Immutable.Set<string>> = ImmutableSet();
-    newMayAliasSets = this.mayAliasSets.map(s => s.filter(v => variable != v)).filter(s => s.size > 1);
+    newMayAliasSets = this.mayAliasSets.map(s => s.filter(v => variable != v));
     let newMayAliasRelation = new MayAliasRelation(newMayAliasSets);
     return newMayAliasRelation;
   }
@@ -1400,7 +1400,7 @@ class MayAliasRelation {
    */
   keepOnlyVariables(variables: Immutable.Set<string>): MayAliasRelation {
     let newMayAliasSets: Immutable.Set<Immutable.Set<string>> = ImmutableSet();
-    newMayAliasSets = this.mayAliasSets.map(s => s.filter(v => variables.includes(v))).filter(s => s.size > 1);
+    newMayAliasSets = this.mayAliasSets.map(s => s.filter(v => variables.includes(v)));
     let newMayAliasRelation = new MayAliasRelation(newMayAliasSets);
     return newMayAliasRelation;
   }
@@ -1444,7 +1444,7 @@ class MayAliasRelation {
         newMayAliasSets = newMayAliasSets.add(newMayAliasSet);
       });
     }
-    newMayAliasSets =  newMayAliasSets.filter(s => s.size>1);
+    //newMayAliasSets =  newMayAliasSets.filter(s => s.size>1);
     const newMayAliasRelation = new MayAliasRelation(newMayAliasSets);
     return newMayAliasRelation;
   }
@@ -2145,7 +2145,7 @@ function parseProofOutline(stmts: Statement[], i: number, precededByAssert: bool
     const x = stmt.expr.lhs.getProofOutlineVariable(() => {
       return stmt.executionError(`Toekenningen aan variabelen van het type ${lhs.type} worden nog niet ondersteund.`);
     });
-    return Seq(Assign(stmt.loc, x, parseProofOutlineExpression(stmt.expr.rhs)), parseProofOutline(stmts, i + 1, false)); 
+    return Seq(Assign(stmt.loc, x, parseProofOutlineExpression(stmt.expr.rhs)), parseProofOutline(stmts, i + 1, false));
   } else if (stmt instanceof ExpressionStatement && stmt.expr instanceof AssignmentExpression && stmt.expr.op == '=' && stmt.expr.lhs instanceof SubscriptExpression) {
     const rhs = stmt.expr.rhs;
     const lhs = stmt.expr.lhs;

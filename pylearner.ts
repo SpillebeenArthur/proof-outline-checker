@@ -5333,10 +5333,11 @@ const aliasViolationExampleSameVariableAssigment: TestCase = {
     assert (b[:0] + [3] + b[0:][1:])[0] == 3 and a[0] == 1 # Uitgesteld
     b[0] = 3
     assert b[0] == 3 and  a[0] == 1 # POSTCONDITIE
+  # Wet Uitgesteld: b
   `,
   errorMessage: `Deze opdracht die het list-object b muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als b`,
-  locStart: 256,
-  locEnd: 257
+  locStart: 255,
+  locEnd: 256
 }
 const aliasViolationExampleIfLocalVariable: TestCase = {
   declarations:

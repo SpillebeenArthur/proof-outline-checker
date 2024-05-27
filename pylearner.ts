@@ -2183,11 +2183,13 @@ function performMayAliasAnalysis(stmts: Statement[], i: number, preStateMayAlias
     if (stmt instanceof ExpressionStatement) {
       if (stmt.expr instanceof AssignmentExpression && stmt.expr.op == '=' && stmt.expr.lhs instanceof VariableExpression) {
         const leftVariableExpressionName = stmt.expr.lhs.name;
-        stmt.mayAliasRelation = stmt.mayAliasRelation.removeVariables(ImmutableSet.of(leftVariableExpressionName));
         if (stmt.expr.rhs instanceof VariableExpression) {
           const rightVariableExpressionName = stmt.expr.rhs.name;
-          stmt.mayAliasRelation = stmt.mayAliasRelation.addMayAliasLink(leftVariableExpressionName, rightVariableExpressionName);
-        }
+          if (leftVariableExpressionName != rightVariableExpressionName) {
+            stmt.mayAliasRelation = stmt.mayAliasRelation.removeVariables(ImmutableSet.of(leftVariableExpressionName));
+            stmt.mayAliasRelation = stmt.mayAliasRelation.addMayAliasLink(leftVariableExpressionName, rightVariableExpressionName);
+          }
+        } else stmt.mayAliasRelation = stmt.mayAliasRelation.removeVariables(ImmutableSet.of(leftVariableExpressionName));
       }
     } else if (stmt instanceof IfStatement) {
       if (stmt.thenBody instanceof BlockStatement && stmt.elseBody instanceof BlockStatement) {
@@ -5316,6 +5318,26 @@ statements: ``,
 expression: ``
 },
 ]
+const aliasViolationExampleSameVariableAssigment: TestCase = {
+  declarations:
+  `def method():
+    assert [0] == [0] # PRECONDITIE
+    a = [0]
+    assert a == [0]
+    assert a == a
+    b = a
+    assert b == a
+    assert a == a
+    a = a
+    assert a == a
+    assert (b[:0] + [3] + b[0:][1:])[0] == 3 and a[0] == 1 # Uitgesteld
+    b[0] = 3
+    assert b[0] == 3 and  a[0] == 1 # POSTCONDITIE
+  `,
+  errorMessage: `Deze opdracht die het list-object b muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als b`,
+  locStart: 256,
+  locEnd: 257
+}
 const aliasViolationExampleIfLocalVariable: TestCase = {
   declarations:
   `def method(x):
@@ -5739,6 +5761,7 @@ async function testAliasingViolationExamples() {
   await testAliasingViolationTestCase(aliasViolationExampleViolationInLastLoopOfLus);
   await testAliasingViolationTestCase(aliasViolationExampleDoubleWhileLusMultipleLoopings);
   await testAliasingViolationTestCase(aliasViolationExampleSingleWhileLusMultipleLoopings);
+  await testAliasingViolationTestCase(aliasViolationExampleSameVariableAssigment);
   console.log("All alias violation error tests passed!");
 }
 

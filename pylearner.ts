@@ -2109,16 +2109,17 @@ function parseProofOutline(stmts: Statement[], i: number, precededByAssert: bool
     listExpression.type = subscriptExpressionTargetType;
     let oneIntLiteral = new IntLiteral(stmt.loc, 1);
     oneIntLiteral.type = intType;
-    const postIndexSliceExpressionStartIndex = new BinaryOperatorExpression(rhs.loc, rhs.instrLoc!, subscriptExpressionIndex, "+", oneIntLiteral);
-    const postIndexSliceExpressionStartIndexType = new InferredType();
-    postIndexSliceExpressionStartIndexType.type = intType;
-    const lenExpression = new LenExpression(rhs.loc, rhs.instrLoc!, subscriptExpressionTarget);
-    lenExpression.type = intType;
-    const postIndexSliceExpression = new SliceExpression(rhs.loc, rhs.instrLoc!, subscriptExpressionTarget, postIndexSliceExpressionStartIndex, lenExpression);
+    const lenSubscriptTarget = new LenExpression(rhs.loc, rhs.instrLoc!, subscriptExpressionTarget);
+    lenSubscriptTarget.type = intType;
+    const postIndexSliceExpression = new SliceExpression(rhs.loc, rhs.instrLoc!, subscriptExpressionTarget, subscriptExpressionIndex, lenSubscriptTarget);
     postIndexSliceExpression.type = subscriptExpressionTargetType;
+    const lenSlicedExpression = new LenExpression(rhs.loc, rhs.instrLoc!, postIndexSliceExpression);
+    lenSlicedExpression.type = intType;
+    const postIndexSliceExpressionFirstElementExcluded = new SliceExpression(rhs.loc, rhs.instrLoc!, postIndexSliceExpression, oneIntLiteral, lenSlicedExpression);
+    postIndexSliceExpressionFirstElementExcluded.type = subscriptExpressionTargetType;
     const parsedPreIndexSliceExpression = parseProofOutlineExpression(preIndexSliceExpression);
     const parsedListExpression = parseProofOutlineExpression(listExpression);
-    const parsedPostIndexSliceExpression = parseProofOutlineExpression(postIndexSliceExpression);
+    const parsedPostIndexSliceExpression = parseProofOutlineExpression(postIndexSliceExpressionFirstElementExcluded);
     const leftConcat = App(rhs.loc, App(rhs.loc, Const(rhs.loc, intListPlusConst), parsedPreIndexSliceExpression), parsedListExpression);
     const concat = App(rhs.loc, App(rhs.loc, Const(rhs.loc, intListPlusConst), leftConcat), parsedPostIndexSliceExpression);
     return Seq(Assign(stmt.loc, proofOutlineVariableOfTarget, concat), parseProofOutline(stmts, i + 1, false));
@@ -4951,7 +4952,7 @@ assert fibonacci(6) == 8`,
 expression: `fibonacci(7)`
 }, {
 title: 'Simple alias example',
-declarations: 
+declarations:
 `def method():
 
     assert [1] == [1] # PRECONDITIE
@@ -4967,7 +4968,7 @@ statements:
 expression: ``
 }, {
 title: 'breaking alias example',
-declarations: 
+declarations:
 `def method():
   
     assert [0] == [0] # PRECONDITIE
@@ -4991,7 +4992,7 @@ statements: ``,
 expression: ``
 }, {
 title: 'while lus alias example, without proof outline',
-declarations: 
+declarations:
 `def methode(): 
 
     i = 0
@@ -5006,8 +5007,22 @@ declarations:
 statements: ``,
 expression: ``
 }, {
+title: 'subscript expression with negative index',
+declarations:
+`# Wet Uitgesteld: b
+def method():
+    assert [1,2,3,4] == [1,2,3,4] # PRECONDITIE
+    a = [1,2,3,4]
+    assert a == [1,2,3,4]
+    assert (a[:0] + [3] + a[0:][1:])[0] == 3 # Uitgesteld
+    a[0] = 3
+    assert a[0] == 3 # POSTCONDITIE
+`,
+statements: ``,
+expression: ``
+}, {
 title: 'if statement with different aliases example. aliases made in then en else block with known variables',
-declarations: 
+declarations:
 `def method():
     assert [0] == [0] # PRECONDITIE
     a = [0]
@@ -5050,7 +5065,7 @@ statements: ``,
 expression: ``
 },{
 title: 'Correct use of aliasing',
-declarations: 
+declarations:
 `# Wet Uitgesteld: b
 def method():
     assert [0] == [0] # PRECONDITIE
@@ -5076,7 +5091,7 @@ def method():
         assert b == a
         assert True
     assert True
-    assert (b[:0] + [3] + b[0+1:])[0] == 3 # Uitgesteld
+    assert (b[:0] + [3] + b[0:][1:])[0] == 3 # Uitgesteld
     b[0] = 3
     assert b[0] == 3  # POSTCONDITIE
 
@@ -5085,7 +5100,7 @@ statements: ``,
 expression: ``
 },{
 title: 'Aliasing with If statement in If statement. Aliases made in different levels of then and else block with known variables',
-declarations: 
+declarations:
 `def method():
     assert [0] == [0] # PRECONDITIE
     a = [0]
@@ -5136,7 +5151,7 @@ statements: ``,
 expression: ``
 },{
 title: 'Aliasing with while statement full proof. correct use of aliasing.',
-declarations: 
+declarations:
 `#Wet Uitgesteld : b
 def methode():
     assert 0 == 0 #PRECONDITIE
@@ -5173,7 +5188,7 @@ def methode():
             assert True and not i == 4
             assert True 
         assert True
-        assert (a[:1] + [1] + a[1+1:])[1] == 1 and len(c) == 2 #Uitgesteld
+        assert (a[:1] + [1] + a[1:][1:])[1] == 1 and len(c) == 2 #Uitgesteld
         a[1] = 1 
         assert a[1] == 1 and len(c) == 2
         assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
@@ -5184,7 +5199,7 @@ statements: ``,
 expression: ``
 },{
 title: 'Aliasing with double while loop',
-declarations: 
+declarations:
 `#Wet Uitgesteld : b
 def methode():
     assert 0 == 0 #PRECONDITIE
@@ -5232,7 +5247,7 @@ def methode():
                 assert True and not (i == 4 and j == 1)
                 assert True 
             assert True
-            assert (a[:1] + [0] + a[1+1:])[1] == 0 and b[0] == 1 #Uitgesteld
+            assert (a[:1] + [0] + a[1:][1:])[1] == 0 and b[0] == 1 #Uitgesteld
             a[1] = 0 
             assert a[1] == 0 and b[0] == 1
             assert j <= n and 0 <= n - j < oude_variant2 #Uitgesteld
@@ -5240,7 +5255,7 @@ def methode():
         assert [1, 1, 1] == [1, 1, 1]
         d = [1, 1, 1]
         assert d == [1, 1, 1]
-        assert (b[:1] + [0] + b[1+1:])[1] == 0 and d[0] == 1 #Uitgesteld
+        assert (b[:1] + [0] + b[1:][1:])[1] == 0 and d[0] == 1 #Uitgesteld
         b[1] = 0 
         assert b[1] == 0 and d[0] == 1
         assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
@@ -5251,7 +5266,7 @@ statements: ``,
 expression: ``
 },{
 title: 'Aliasing with double while loop. Makes b and a aliases at end of biggest loop, but b is re-initialised every start of biggest loop. So there is no alias violation in smaller loop',
-declarations: 
+declarations:
 `#Wet Uitgesteld : b
 def methode():
     assert 0 == 0 #PRECONDITIE
@@ -5285,7 +5300,7 @@ def methode():
             assert j + 1 <= n and 0 <= n - (j + 1) < oude_variant2 # Z op 1 of Herschrijven met 2 in 3
             j = j + 1
             assert j <= n and 0 <= n - j < oude_variant2
-            assert (a[:1] + [0] + a[1+1:])[1] == 0 and b[0] == 1 #Uitgesteld
+            assert (a[:1] + [0] + a[1:][1:])[1] == 0 and b[0] == 1 #Uitgesteld
             a[1] = 0 
             assert a[1] == 0 and b[0] == 1
             assert j <= n and 0 <= n - j < oude_variant2 #Uitgesteld
@@ -5302,7 +5317,7 @@ expression: ``
 },
 ]
 const aliasViolationExampleIfLocalVariable: TestCase = {
-  declarations: 
+  declarations:
   `def method(x):
     assert [0] == [0] # PRECONDITIE
     a = [0]
@@ -5327,17 +5342,17 @@ const aliasViolationExampleIfLocalVariable: TestCase = {
       assert b == a    
       assert True
     assert True
-    assert (b[:0] + [3] + b[0+1:])[0] == 3 and a[0] == 1 # Uitgesteld 
+    assert (b[:0] + [3] + b[0:][1:])[0] == 3 and a[0] == 1 # Uitgesteld 
     b[0] = 3
     assert b[0] == 3 and  a[0] == 1 # POSTCONDITIE
   # Wet Uitgesteld: b
   `,
   errorMessage: `Deze opdracht die het list-object b muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als b`,
-  locStart: 541,
-  locEnd: 542,
+  locStart: 543,
+  locEnd: 544,
 };
 const aliasViolationExampleWhileWithIf: TestCase = {
-  declarations: 
+  declarations:
   `def methode():
 
       assert [8] == [8] #PRECONDITIE PARTIËLE CORRECTHEID
@@ -5361,7 +5376,7 @@ const aliasViolationExampleWhileWithIf: TestCase = {
               assert a[0] == a[0]
               i = a[0]
               assert i == a[0]
-              assert (a[:0] + [i+1] + a[0+1:])[0] == i + 1
+              assert (a[:0] + [i+1] + a[0:][1:])[0] == i + 1
               a[0] = i + 1
               assert a[0] == i + 1
               assert True 
@@ -5370,7 +5385,7 @@ const aliasViolationExampleWhileWithIf: TestCase = {
               assert b[0] == b[0]
               i = b[0]
               assert i == b[0]
-              assert (b[:0] + [i+1] + b[0+1:])[0] == i + 1
+              assert (b[:0] + [i+1] + b[0:][1:])[0] == i + 1
               b[0] = i + 1
               assert b[0] == i + 1
               assert d == d
@@ -5380,18 +5395,18 @@ const aliasViolationExampleWhileWithIf: TestCase = {
           assert True
           assert len(a) == 1   
       assert len(a) == 1 and not a[0] != b[0]  
-      assert (d[:0] + [3] + d[0+1:])[0] == 5 and c[0] == 5 
+      assert (d[:0] + [3] + d[0:][1:])[0] == 5 and c[0] == 5 
       d[0] = 5
       assert d[0] == 5 and c[0] == 5 # POSTCONDITIE
       return a[0]
 
   `,
   errorMessage: `Deze opdracht die het list-object d muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als d`,
-  locStart: 1263,
-  locEnd: 1264
+  locStart: 1269,
+  locEnd: 1270
 };
 const aliasViolationExampleIfBasic: TestCase = {
-  declarations: 
+  declarations:
   `def method(x, y):
   assert [0, 2, 3] == [0, 2, 3] # PRECONDITIE
   a = [0, 2, 3]
@@ -5410,18 +5425,18 @@ const aliasViolationExampleIfBasic: TestCase = {
     assert True and not x == True
     assert True 
   assert True
-  assert (a[:1] + [3] + a[1+1:])[1] == 3 and b[1] == 3 # Uitgesteld 
-  a[1] = 3
-  assert a[1] == 3 and b[1] == 3 # POSTCONDITIE
+  assert (a[:-1] + [3] + a[-1:][1:])[1] == 3 and b[1] == 3 # Uitgesteld 
+  a[-1] = 3
+  assert a[-1] == 3 and b[1] == 3 # POSTCONDITIE
   return a[0]
 # Wet Uitgesteld: b
   `,
   errorMessage: `Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a`,
-  locStart: 420,
-  locEnd: 421
+  locStart: 425,
+  locEnd: 426
 };
 const aliasViolationExampleDoubleIfs: TestCase = {
-  declarations: 
+  declarations:
       `def method():
       assert [0] == [0] # PRECONDITIE
       a = [0]
@@ -5441,7 +5456,7 @@ const aliasViolationExampleDoubleIfs: TestCase = {
         assert a == a
         b=a
         assert b == a 
-        assert (b[:0] + [2] + b[0+1:])[0] == 2 and c[0] == 1 and len(d) == 1
+        assert (b[:0] + [2] + b[0:][1:])[0] == 2 and c[0] == 1 and len(d) == 1
         b[0] = 2
         assert b[0] == 2 and c[0] == 1 and len(d) == 1
         assert True
@@ -5458,7 +5473,7 @@ const aliasViolationExampleDoubleIfs: TestCase = {
           assert c == a
           assert True 
         assert True
-        assert (c[:0] + [3] + c[0+1:])[0] == 3 and b[0] == 1
+        assert (c[:0] + [3] + c[0:][1:])[0] == 3 and b[0] == 1
         c[0] = 3
         assert c[0] == 3 and b[0] == 1
         assert True 
@@ -5471,11 +5486,11 @@ const aliasViolationExampleDoubleIfs: TestCase = {
       assert True # POSTCONDITIE
       `,
   errorMessage: `Deze opdracht die het list-object c muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als c`,
-  locStart: 954,
-  locEnd: 955,
+  locStart: 958,
+  locEnd: 959,
 };
 const aliasViolationExampleLocalVarsInWhile: TestCase = {
-  declarations: 
+  declarations:
   `def methode():
   assert True #PRECONDITIE PARTIELE CORRECTHEID
   assert 0 == 0
@@ -5490,7 +5505,7 @@ const aliasViolationExampleLocalVarsInWhile: TestCase = {
     assert a == a
     b = a
     assert b == a
-    assert (a[:i] + [5] + a[i+1:])[i] == 5 and b[i] == 5 # Uitgesteld
+    assert (a[:i] + [5] + a[i:][1:])[i] == 5 and b[i] == 5 # Uitgesteld
     a[i] = 5
     assert a[i] == 5 and b[i] == 5
     assert 1 == 1
@@ -5501,11 +5516,11 @@ const aliasViolationExampleLocalVarsInWhile: TestCase = {
   # Wet Uitgesteld: b
   `,
   errorMessage: `Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a`,
-  locStart: 363,
-  locEnd: 364
+  locStart: 365,
+  locEnd: 366
 };
 const aliasViolationExampleViolationInLastLoopOfLus: TestCase = {
-  declarations: 
+  declarations:
   `def methode():
   assert 0 == 0 #PRECONDITIE
   i = 0
@@ -5538,7 +5553,7 @@ const aliasViolationExampleViolationInLastLoopOfLus: TestCase = {
       assert True and not i == 4
       assert True 
     assert True
-    assert (a[:1] + [1] + a[1+1:])[1] == 1 and b == [5] #Uitgesteld
+    assert (a[:1] + [1] + a[1:][1:])[1] == 1 and b == [5] #Uitgesteld
     a[1] = 1 
     assert a[1] == 1 and b == [5]
     assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
@@ -5547,11 +5562,11 @@ const aliasViolationExampleViolationInLastLoopOfLus: TestCase = {
   #Wet Uitgesteld : b
   `,
   errorMessage: `Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a`,
-  locStart: 870,
-  locEnd: 871
+  locStart: 872,
+  locEnd: 873
 };
 const aliasViolationExampleDoubleWhileLusMultipleLoopings: TestCase = {
-  declarations: 
+  declarations:
   `def methode():
   assert 0 == 0 #PRECONDITIE
   i = 0
@@ -5576,8 +5591,8 @@ const aliasViolationExampleDoubleWhileLusMultipleLoopings: TestCase = {
     assert i + 1 <= n and 0 <= n - (i + 1) < oude_variant # Z op 1 of Herschrijven met 2 in 3
     i = i + 1
     assert i <= n and 0 <= n - i < oude_variant
-    assert (a[:1] + [0] + a[1+1:])[1] == 0 and b[0] == 1 #Uitgesteld
-    a[1] = 0 
+    assert (a[:1] + [0] + a[1:][1:])[1] == 0 and b[0] == 1 #Uitgesteld
+    a[1] = 0
     assert a[1] == 0 and b[0] == 1
     assert j <= n # Uitgesteld
     while  j < n:
@@ -5598,11 +5613,11 @@ const aliasViolationExampleDoubleWhileLusMultipleLoopings: TestCase = {
   #Wet Uitgesteld : b
   `,
   errorMessage: `Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a`,
-  locStart: 719,
-  locEnd: 720
+  locStart: 721,
+  locEnd: 722
 };
 const aliasViolationExampleSingleWhileLusMultipleLoopings: TestCase = {
-  declarations: 
+  declarations:
   `def methode(x):
   assert 0 == 0 #PRECONDITIE
   i = 0
@@ -5624,7 +5639,7 @@ const aliasViolationExampleSingleWhileLusMultipleLoopings: TestCase = {
     assert i + 1 <= n and 0 <= n - (i + 1) < oude_variant # Z op 1 of Herschrijven met 2 in 3
     i = i + 1
     assert i <= n and 0 <= n - i < oude_variant
-    assert (b[:1] + [0] + b[1+1:])[1] == 0 and a[0] == 1 #Uitgesteld
+    assert (b[:1] + [0] + b[1:][1:])[1] == 0 and a[0] == 1 #Uitgesteld
     b[1] = 0 
     assert b[1] == 0 and a[0] == 1
     assert True
@@ -5644,8 +5659,8 @@ const aliasViolationExampleSingleWhileLusMultipleLoopings: TestCase = {
   #Wet Uitgesteld : b
   `,
   errorMessage: `Deze opdracht die het list-object b muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als b`,
-  locStart: 680,
-  locEnd: 681
+  locStart: 682,
+  locEnd: 683
 };
 
 function setExample(example: Example) {

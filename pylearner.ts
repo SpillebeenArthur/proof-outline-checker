@@ -1386,34 +1386,29 @@ class MayAliasRelation {
    * @returns  relation with links to variables removed
    */
   removeVariables(variables: Immutable.Set<string>): MayAliasRelation {
-    let newMayAliasSets = this.mayAliasSets.map(s => s.subtract(s.intersect(variables)));
+    let newMayAliasSets = this.mayAliasSets.map(s => s.subtract(variables));
     let newMayAliasRelation = new MayAliasRelation(newMayAliasSets);
     return newMayAliasRelation;
   }
   
   /**
-   * Returns a relation where a link between two variables is added to the relation. `lv` is linked to `rv`.    
+   * Returns a relation where a link between `variables` is added to the relation. `variables` has to consist of at least two variables to be able to link them, otherwise it returns the original relation.
    * 
-   * @param lv lefthandside variable of the assigment of two variables
-   * @param rv rigthhandside variable of the assigment of two variables
-   * @returns new relation with given aliases linked and included
+   * @param variables variables to link
+   * @returns new relation with given variables linked and included
    */
-  addMayAliasLink(lv: string, rv: string): MayAliasRelation {
-    let variables = this.mayAliasSets.flatten();
-    const rvHasAlias = variables.includes(rv);
-    let newMayAliasSets : Immutable.Set<Immutable.Set<string>> = ImmutableSet();
-    if (!rvHasAlias) {
-      let newMayAliasSet = Immutable.Set.of(lv, rv);
-      newMayAliasSets = this.mayAliasSets.add(newMayAliasSet);
-    } else if (rvHasAlias) {
-      this.mayAliasSets.forEach(s => {
-        if (s.includes(rv))
-          s = s.add(lv);
-        newMayAliasSets = newMayAliasSets.add(s);
-      });
-    }
-    const newMayAliasRelation = new MayAliasRelation(newMayAliasSets);
-    return newMayAliasRelation;
+  addMayAliasLink(variables: Immutable.Set<string>): MayAliasRelation {
+    if(variables.size >= 2) {
+      const allVariables = this.mayAliasSets.flatten().toSet();
+      const isVariableAlreadyLinked = !allVariables.intersect(variables).isEmpty();
+      let newMayAliasSets : Immutable.Set<Immutable.Set<string>> = ImmutableSet();
+      if (!isVariableAlreadyLinked)
+        newMayAliasSets = this.mayAliasSets.add(variables);
+      else 
+        newMayAliasSets = this.mayAliasSets.map(s => !s.intersect(variables).isEmpty() ? s.union(variables) : s);
+      const newMayAliasRelation = new MayAliasRelation(newMayAliasSets);
+      return newMayAliasRelation;
+    } else return this;
   }
 
   /**
@@ -1422,16 +1417,16 @@ class MayAliasRelation {
    * @returns set without subsets.
    */
   private removeSubsets(): Immutable.Set<Immutable.Set<string>> {
-    return this.mayAliasSets.filter(set => !this.mayAliasSets.some(otherSet => otherSet.isSuperset(set) && (set.size < otherSet.size)));
+    return this.mayAliasSets.filter(set => !this.mayAliasSets.some(otherSet => (set.size < otherSet.size) && otherSet.isSuperset(set)));
   }
 
   /**
-   * Returns a relation that relates variables x and y if any only if this `holds` for x and y, and at least one of the two relations, namely `this` and `other', relates variables x and y.
+   * Returns a relation that relates variables x and y if any only if `this` holds for x and y, and at least one of the two given relations, namely `this` and `other', relates variables x and y.
    * 
    * @param other relation to combine with
    * @returns combined relation
    */
-  combineWithMayAliasRelation(other: MayAliasRelation): MayAliasRelation {
+  unionWithMayAliasRelation(other: MayAliasRelation): MayAliasRelation {
     let combinedMayAliasSets = this.mayAliasSets.union(other.mayAliasSets);
     let combinedMayAliasRelation = new MayAliasRelation(combinedMayAliasSets);
     return combinedMayAliasRelation;
@@ -1745,7 +1740,7 @@ class MethodDeclaration extends AbstractMethodDeclaration {
     let outlineStartComment = null;
     let outlineStartEnv = null;
     let total = null;
-
+    let mayAliasesPreProofOutline: Immutable.Set<string> = ImmutableSet.of();
     for (let i = 0; i < this.bodyBlock.length; i++) {
       const stmt = this.bodyBlock[i];
       if (stmt instanceof ExpressionStatement && stmt.expr instanceof AssignmentExpression && stmt.expr.declaration != null) {
@@ -1753,6 +1748,8 @@ class MethodDeclaration extends AbstractMethodDeclaration {
         env = EnvCons(d.getProofOutlineVariable(() => {
           return d.executionError(`Variabelen van type ${d.type.type!.toString()} worden nog niet ondersteund in bewijssilhouetten`);
         }), env);
+        if (outlineStart == null)
+          mayAliasesPreProofOutline = mayAliasesPreProofOutline.union(collectVariablesInExpression(stmt.expr)); 
       }
       if (stmt instanceof AssertStatement && stmt.comment != null) {
         if (stmt.comment.text.includes('PRECONDITION') || stmt.comment.text.includes('PRECONDITIE')) {
@@ -1766,7 +1763,8 @@ class MethodDeclaration extends AbstractMethodDeclaration {
         if (stmt.comment.text.includes('POSTCONDITION') || stmt.comment.text.includes("POSTCONDITIE")) {
           if (outlineStart == null)
             return stmt.executionError("POSTCONDITIE zonder PRECONDITIE");
-          checkProofOutline(checkEntailments, total!, outlineStartEnv!, this.bodyBlock.slice(outlineStart, i + 1), this.parameterDeclarations.map(x => x.name));
+          mayAliasesPreProofOutline = mayAliasesPreProofOutline.union(this.parameterDeclarations.map(p => p.name));
+          checkProofOutline(checkEntailments, total!, outlineStartEnv!, this.bodyBlock.slice(outlineStart, i + 1), mayAliasesPreProofOutline);
           outlineStart = null;
           outlineStartComment = null;
           outlineStartEnv = null;
@@ -2146,6 +2144,8 @@ function collectVariablesInExpression(expr: Expression): Immutable.Set<string> {
     return collectVariablesInExpression(expr.leftOperand).union(collectVariablesInExpression(expr.rightOperand));
   else if (expr instanceof SubscriptExpression)
     return collectVariablesInExpression(expr.target).union(collectVariablesInExpression(expr.index));
+  else if (expr instanceof AssignmentExpression)
+    return collectVariablesInExpression(expr.lhs).union(collectVariablesInExpression(expr.rhs));
   else if (expr instanceof LenExpression)
     return collectVariablesInExpression(expr.target);
   else if (expr instanceof SliceExpression)
@@ -2187,7 +2187,7 @@ function performMayAliasAnalysis(stmts: Statement[], i: number, preStateMayAlias
           const rightVariableExpressionName = stmt.expr.rhs.name;
           if (leftVariableExpressionName != rightVariableExpressionName) {
             stmt.mayAliasRelation = stmt.mayAliasRelation.removeVariables(ImmutableSet.of(leftVariableExpressionName));
-            stmt.mayAliasRelation = stmt.mayAliasRelation.addMayAliasLink(leftVariableExpressionName, rightVariableExpressionName);
+            stmt.mayAliasRelation = stmt.mayAliasRelation.addMayAliasLink(ImmutableSet.of(leftVariableExpressionName, rightVariableExpressionName));
           }
         } else stmt.mayAliasRelation = stmt.mayAliasRelation.removeVariables(ImmutableSet.of(leftVariableExpressionName));
       }
@@ -2195,7 +2195,7 @@ function performMayAliasAnalysis(stmts: Statement[], i: number, preStateMayAlias
       if (stmt.thenBody instanceof BlockStatement && stmt.elseBody instanceof BlockStatement) {
         let mayAliasRelationThenBlock = performMayAliasAnalysisOnBlock(stmt.thenBody, stmt.mayAliasRelation);
         let mayAliasRelationElseBlock = performMayAliasAnalysisOnBlock(stmt.elseBody, stmt.mayAliasRelation);
-        let combinedMayAliasRelation = mayAliasRelationThenBlock.combineWithMayAliasRelation(mayAliasRelationElseBlock);
+        let combinedMayAliasRelation = mayAliasRelationThenBlock.unionWithMayAliasRelation(mayAliasRelationElseBlock);
         return performMayAliasAnalysis(stmts, i+1, combinedMayAliasRelation);
       }
     } else if (stmt instanceof WhileStatement) {
@@ -2216,8 +2216,8 @@ function performMayAliasAnalysis(stmts: Statement[], i: number, preStateMayAlias
     return preStateMayAliasRelation;
 }
 
-function checkProofOutline(checkEntailments: boolean, total: boolean, env: Env_, stmts: Statement[], parameters: string[]) {
-  performMayAliasAnalysis(stmts, 0, new MayAliasRelation(ImmutableSet.of(Immutable.List(parameters).toSet())));
+function checkProofOutline(checkEntailments: boolean, total: boolean, env: Env_, stmts: Statement[], mayAliasesPreProofOutline: Immutable.Set<string>) {
+  performMayAliasAnalysis(stmts, 0, new MayAliasRelation(ImmutableSet.of(mayAliasesPreProofOutline)));
   const outline = parseProofOutline(stmts, 0, false);
   if (!stmt_is_well_typed(env, outline))
     throw new LocError(new Loc(stmts[0].loc.doc, stmts[0].loc.start, stmts[stmts.length - 1].loc.end), "Het bewijssilhouet voldoet niet aan de typeregels");
@@ -5792,33 +5792,38 @@ async function runUnitTests() {
   assert(R(S.of(S.of("a", "b", "c", "d"), S.of("a", "b", "c"), S.of("a", "b"))).equals(R(S.of(S.of("a", "b", "c", "d")))));
   assert(R(S.of(S.of("a", "b", "c", "d"), S.of("a", "b"), S.of("c", "d"))).equals(R(S.of(S.of("a", "b", "c", "d")))));
   assert(R(S.of(S.of("a", "b", "c", "d"), S.of("a", "b"), S.of("c", "d"))).equals(R(S.of(S.of("a", "b", "c", "d")))));
-  assert(R(S.of(S.of("a", "b"))).addMayAliasLink("c", "a").equals(R(S.of(S.of("a", "b", "c")))));
-  assert(R(S.of(S.of("a", "b", "c"))).addMayAliasLink("a", "d").equals(R(S.of(S.of("a", "b", "c"), S.of("a", "d")))));
-  assert(R(S.of(S.of("a", "b", "c"), S.of("a", "d"))).addMayAliasLink("b", "c").equals(R(S.of(S.of("a", "b", "c"), S.of("a", "d")))));
-  assert(R(S.of(S.of("a", "b", "c"), S.of("a", "d"))).addMayAliasLink("a", "b").equals(R(S.of(S.of("a", "b", "c"), S.of("a", "d")))));
-  assert(R(S.of(S.of("a", "b", "c"), S.of("a", "d"))).addMayAliasLink("d", "e").equals(R(S.of(S.of("a", "b", "c"), S.of("a", "d"), S.of("d", "e")))));
-  assert(R(S.of(S.of("a", "b", "c"), S.of("c", "d"))).addMayAliasLink("c", "d").equals(R(S.of(S.of("a", "b", "c"), S.of("c", "d")))));
-  assert(R(S.of(S.of("a", "b", "c"), S.of("c", "d"))).addMayAliasLink("c", "a").equals(R(S.of(S.of("a", "b", "c"), S.of("c", "d")))));
-  assert(R(S.of(S.of("a", "b", "c"), S.of("c", "d"), S.of("a", "d"))).addMayAliasLink("a", "d").equals(R(S.of(S.of("a", "b", "c"), S.of("a", "c", "d")))));
-  assert(R(S.of(S.of("a", "b", "c"), S.of("c", "d"), S.of("a", "d"))).addMayAliasLink("a", "a").equals(R(S.of(S.of("a", "b", "c"), S.of("c", "d"), S.of("a", "d")))));
-  assert(R(S.of(S.of("a", "b", "z"), S.of("b", "e", "z"))).addMayAliasLink("a", "e").equals(R(S.of(S.of("a", "b", "e", "z")))));
-  assert(R(S.of(S.of("a", "b"), S.of("a", "c"), S.of("a", "d"), S.of("a", "e"))).addMayAliasLink("f", "a").equals(R(S.of(S.of("a", "b", "f"), S.of("a", "c", "f"), S.of("a", "d", "f"), S.of("a", "e", "f")))));
+  assert(R(S.of(S.of("a", "b"))).addMayAliasLink(S.of()).equals(R(S.of(S.of("a", "b")))));
+  assert(R(S.of(S.of("a", "b"))).addMayAliasLink(S.of("c")).equals(R(S.of(S.of("a", "b")))));
+  assert(R(S.of(S.of("a", "b"))).addMayAliasLink(S.of("c", "a")).equals(R(S.of(S.of("a", "b", "c")))));  
+  assert(R(S.of(S.of("a", "b"))).addMayAliasLink(S.of("c", "d", "e")).equals(R(S.of(S.of("a", "b"), S.of("c", "d", "e")))));
+  assert(R(S.of(S.of("a", "b", "c"))).addMayAliasLink(S.of("a", "d")).equals(R(S.of(S.of("a", "b", "c", "d")))));
+  assert(R(S.of(S.of("a", "b", "c"), S.of("a", "d"))).addMayAliasLink(S.of("b", "c")).equals(R(S.of(S.of("a", "b", "c"), S.of("a", "d")))));
+  assert(R(S.of(S.of("a", "b", "c"), S.of("a", "d"))).addMayAliasLink(S.of("a", "b")).equals(R(S.of(S.of("a", "b", "c"), S.of("a", "b", "d")))));
+  assert(R(S.of(S.of("a", "b", "c"), S.of("a", "d"))).addMayAliasLink(S.of("d", "e")).equals(R(S.of(S.of("a", "b", "c"), S.of("a", "d", "e")))));
+  assert(R(S.of(S.of("a", "b", "c"), S.of("c", "d"))).addMayAliasLink(S.of("c", "d")).equals(R(S.of(S.of("a", "b", "c", "d")))));
+  assert(R(S.of(S.of("a", "b", "c"), S.of("c", "d"))).addMayAliasLink(S.of("c", "a")).equals(R(S.of(S.of("a", "b", "c"), S.of("a", "c", "d")))));
+  assert(R(S.of(S.of("a", "b", "c"), S.of("c", "d"), S.of("a", "d"))).addMayAliasLink(S.of("a", "d")).equals(R(S.of(S.of("a", "b", "c", "d")))));
+  assert(R(S.of(S.of("a", "b", "c"), S.of("c", "d"), S.of("a", "d"))).addMayAliasLink(S.of("a", "a")).equals(R(S.of(S.of("a", "b", "c"), S.of("c", "d"), S.of("a", "d")))));
+  assert(R(S.of(S.of("a", "b", "z"), S.of("b", "e", "z"))).addMayAliasLink(S.of("a", "e")).equals(R(S.of(S.of("a", "b", "e", "z")))));
+  assert(R(S.of(S.of("a", "b"), S.of("a", "c"), S.of("a", "d"), S.of("a", "e"))).addMayAliasLink(S.of("f", "a")).equals(R(S.of(S.of("a", "b", "f"), S.of("a", "c", "f"), S.of("a", "d", "f"), S.of("a", "e", "f")))));
+  assert(R(S.of(S.of("a", "b"), S.of("b", "c"), S.of("c", "d"), S.of("d", "e"))).addMayAliasLink(S.of("a", "b", "c", "d", "e")).equals(R(S.of(S.of("a", "b", "c", "d", "e")))));
+  assert(R(S.of(S.of("a", "b"), S.of("b", "c"), S.of("c", "d"), S.of("d", "e"))).addMayAliasLink(S.of("a", "e")).equals(R(S.of(S.of("a", "b", "e"), S.of("b", "c"), S.of("c", "d"), S.of("a", "d", "e")))));
   assert(R(S.of(S.of("a", "b", "c"), S.of("a", "d"))).removeVariables(ImmutableSet.of("e")).equals(R(S.of(S.of("a", "b", "c"), S.of("a", "d")))));
   assert(R(S.of(S.of("a", "b", "c"), S.of("a", "d"))).removeVariables(ImmutableSet.of("c")).equals(R(S.of(S.of("a", "b"), S.of("a", "d")))));
   assert(R(S.of(S.of("a", "b"), S.of("a", "d"))).removeVariables(ImmutableSet.of("b")).equals(R(S.of(S.of("a", "d")))));
   assert(R(S.of(S.of("a", "b", "d"), S.of("a", "d", "e"))).removeVariables(ImmutableSet.of("e")).equals(R(S.of(S.of("a", "b", "d")))));
   assert(R(S.of(S.of("a", "b"), S.of("b", "d"), S.of("b", "d", "e"))).removeVariables(ImmutableSet.of("b", "d")).equals(R(S.of())));
   assert(R(S.of(S.of("a", "b"), S.of("b", "d"), S.of("b", "d", "e"))).removeVariables(ImmutableSet.of()).equals(R(S.of(S.of("a", "b"), S.of("b", "d"), S.of("b", "d", "e")))));
-  assert(R(S.of()).combineWithMayAliasRelation(R(S.of())).equals(R(S.of())));
-  assert(R(S.of(S.of("a", "d"))).combineWithMayAliasRelation(R(S.of())).equals(R(S.of(S.of("a", "d")))));
-  assert(R(S.of(S.of("a", "d"))).combineWithMayAliasRelation(R(S.of(S.of("a", "c")))).equals(R(S.of(S.of("a", "d"), S.of("a", "c")))));
-  assert(R(S.of(S.of("a", "d"))).combineWithMayAliasRelation(R(S.of(S.of("a", "c", "d")))).equals(R(S.of(S.of("a", "c", "d")))));
-  assert(R(S.of(S.of("a", "b", "c", "d"))).combineWithMayAliasRelation(R(S.of(S.of("a", "d")))).equals(R(S.of(S.of("a", "b", "c", "d")))));
-  assert(R(S.of(S.of("a", "d"), S.of("b", "d"))).combineWithMayAliasRelation(R(S.of(S.of("a", "b", "e")))).equals(R(S.of(S.of("a", "d"), S.of("b", "d"), S.of("a", "b", "e")))));
-  assert(R(S.of(S.of("a", "b", "c"), S.of("b", "d"))).combineWithMayAliasRelation(R(S.of(S.of("b", "d"), S.of("a", "b"), S.of("d", "e")))).equals(R(S.of(S.of("a", "b", "c"), S.of("b", "d"), S.of("d", "e")))));
-  assert(R(S.of(S.of("a", "b", "c"))).combineWithMayAliasRelation(R(S.of(S.of("a", "b"), S.of("b", "c"), S.of("d", "e")))).equals(R(S.of(S.of("a", "b", "c"), S.of("d", "e")))));
-  assert(R(S.of(S.of("a", "b"), S.of("b", "c"))).combineWithMayAliasRelation(R(S.of(S.of("a", "b", "c"), S.of("d", "e")))).equals(R(S.of(S.of("a", "b", "c"), S.of("d", "e")))));
-  assert(R(S.of(S.of("a", "b", "c"), S.of("a", "c", "d"), S.of("a", "b", "c", "e"), S.of("b", "d", "e"))).combineWithMayAliasRelation(R(S.of(S.of("a", "c"), S.of("a", "b", "d"), S.of("b", "d", "e")))).equals(R(S.of(S.of("a", "c", "d"), S.of("a", "b", "d"), S.of("a", "b", "c", "e"), S.of("b", "d", "e")))));
+  assert(R(S.of()).unionWithMayAliasRelation(R(S.of())).equals(R(S.of())));
+  assert(R(S.of(S.of("a", "d"))).unionWithMayAliasRelation(R(S.of())).equals(R(S.of(S.of("a", "d")))));
+  assert(R(S.of(S.of("a", "d"))).unionWithMayAliasRelation(R(S.of(S.of("a", "c")))).equals(R(S.of(S.of("a", "d"), S.of("a", "c")))));
+  assert(R(S.of(S.of("a", "d"))).unionWithMayAliasRelation(R(S.of(S.of("a", "c", "d")))).equals(R(S.of(S.of("a", "c", "d")))));
+  assert(R(S.of(S.of("a", "b", "c", "d"))).unionWithMayAliasRelation(R(S.of(S.of("a", "d")))).equals(R(S.of(S.of("a", "b", "c", "d")))));
+  assert(R(S.of(S.of("a", "d"), S.of("b", "d"))).unionWithMayAliasRelation(R(S.of(S.of("a", "b", "e")))).equals(R(S.of(S.of("a", "d"), S.of("b", "d"), S.of("a", "b", "e")))));
+  assert(R(S.of(S.of("a", "b", "c"), S.of("b", "d"))).unionWithMayAliasRelation(R(S.of(S.of("b", "d"), S.of("a", "b"), S.of("d", "e")))).equals(R(S.of(S.of("a", "b", "c"), S.of("b", "d"), S.of("d", "e")))));
+  assert(R(S.of(S.of("a", "b", "c"))).unionWithMayAliasRelation(R(S.of(S.of("a", "b"), S.of("b", "c"), S.of("d", "e")))).equals(R(S.of(S.of("a", "b", "c"), S.of("d", "e")))));
+  assert(R(S.of(S.of("a", "b"), S.of("b", "c"))).unionWithMayAliasRelation(R(S.of(S.of("a", "b", "c"), S.of("d", "e")))).equals(R(S.of(S.of("a", "b", "c"), S.of("d", "e")))));
+  assert(R(S.of(S.of("a", "b", "c"), S.of("a", "c", "d"), S.of("a", "b", "c", "e"), S.of("b", "d", "e"))).unionWithMayAliasRelation(R(S.of(S.of("a", "c"), S.of("a", "b", "d"), S.of("b", "d", "e")))).equals(R(S.of(S.of("a", "c", "d"), S.of("a", "b", "d"), S.of("a", "b", "c", "e"), S.of("b", "d", "e")))));
   assert(R(S.of(S.of("a", "b"))).getMayAliasesOfVariable("c").equals(S.of()));
   assert(R(S.of(S.of("a", "b"))).getMayAliasesOfVariable("b").equals(S.of("a")));
   assert(R(S.of(S.of("a", "b"), S.of("b", "c"))).getMayAliasesOfVariable("b").equals(S.of("a", "c")));

@@ -5468,373 +5468,371 @@ async function runUnitTests() {
   console.log("All Unit tests passed!");
 }
 
-const hiddenTests = [
-  {
-    title: 'Hidden tests',
-    declarations: '',
-    statements: 'assert not not - 2 ** 2 ** 3 == -256',
-    expression: ''
-  }, {
-    title: 'Simple alias example',
-    declarations:
-    `def method():
-    
-        assert [1] == [1] # PRECONDITIE
-        a = [1]
-        assert a == [1]
+const hiddenTests = [{
+  title: 'Hidden tests',
+  declarations: '',
+  statements: 'assert not not - 2 ** 2 ** 3 == -256',
+  expression: ''
+}, {
+  title: 'Simple alias example',
+  declarations:
+`def method():
+  
+    assert [1] == [1] # PRECONDITIE
+    a = [1]
+    assert a == [1]
+    assert a == a
+    b = a
+    assert b == a # POSTCONDITIE
+  
+`,
+  statements:
+  ``,
+  expression: `` 
+}, {
+  title: 'breaking alias example',
+  declarations:
+`def method():
+  
+    assert [0] == [0] # PRECONDITIE
+    a = [0]
+    assert a == [0]
+    assert [1] == [1]
+    b = [1]
+    assert b == [1]
+    assert [1] == [1]
+    c = [1]
+    assert c == [1] 
+    assert a == a 
+    b = a
+    assert b == a 
+    assert [0] == [0] 
+    a = [0]
+    assert a == [0] # POSTCONDITIE
+
+`,
+  statements: ``,
+  expression: ``
+}, {
+  title: 'while lus alias example, without proof outline',
+  declarations:
+`def methode():
+
+    i = 0
+    n = 3
+    a = [1]
+    b = [5]
+    while  i < n:
+        b = a
+        i = i + 1
+
+`,
+  statements: ``,
+  expression: ``
+}, {
+  title: 'subscript expression with negative index',
+  declarations:
+`# Wet Uitgesteld: b
+def method():
+    assert [1,2,3,4] == [1,2,3,4] # PRECONDITIE
+    a = [1,2,3,4]
+    assert a == [1,2,3,4]
+    assert (a[:0] + [3] + a[0:][1:])[0] == 3 # Uitgesteld
+    a[0] = 3
+    assert a[0] == 3 # POSTCONDITIE
+`,
+  statements: ``,
+  expression: ``
+}, {
+  title: 'if statement with different aliases example. aliases made in then en else block with known variables',
+  declarations:
+`def method():
+    assert [0] == [0] # PRECONDITIE
+    a = [0]
+    assert a == [0]
+    assert [1] == [1]
+    b = [1]
+    assert b == [1]
+    assert [1] == [1]
+    c = [1]
+    assert c == [1]
+    assert [1] == [1]
+    d = [1]
+    assert d == [1]
+    assert True 
+    if len(b) == 1:
+        assert True  and len(b) == 1
         assert a == a
-        b = a
-        assert b == a # POSTCONDITIE
-    
-    `,
-    statements: 
-    ``,
-    expression: `` 
-  }, {
-    title: 'breaking alias example',
-    declarations:
-    `def method():
-      
-        assert [0] == [0] # PRECONDITIE
-        a = [0]
-        assert a == [0]
-        assert [1] == [1]
-        b = [1]
-        assert b == [1]
-        assert [1] == [1]
-        c = [1]
-        assert c == [1] 
-        assert a == a 
-        b = a
-        assert b == a 
-        assert [0] == [0] 
-        a = [0]
-        assert a == [0] # POSTCONDITIE
-    
-    `,
-    statements: ``,
-    expression: ``
-  }, {
-    title: 'while lus alias example, without proof outline',
-    declarations:
-    `def methode(): 
-    
-        i = 0
-        n = 3
-        a = [1]
-        b = [5]
-        while  i < n:
-            b = a
-            i = i + 1
-    
-    `,
-    statements: ``,
-    expression: ``
-  }, {
-    title: 'subscript expression with negative index',
-    declarations:
-    `def method():
-        assert [1,2,3,4] == [1,2,3,4] # PRECONDITIE
-        a = [1,2,3,4]
-        assert a == [1,2,3,4]
-        assert (a[:0] + [3] + a[0:][1:])[0] == 3 # Uitgesteld
-        a[0] = 3
-        assert a[0] == 3 # POSTCONDITIE
-    # Wet Uitgesteld: b
-    `,
-    statements: ``,
-    expression: ``
-  }, {
-    title: 'if statement with different aliases example. aliases made in then en else block with known variables',
-    declarations:
-    `def method():
-        assert [0] == [0] # PRECONDITIE
-        a = [0]
-        assert a == [0]
-        assert [1] == [1]
-        b = [1]
-        assert b == [1]
-        assert [1] == [1]
-        c = [1]
-        assert c == [1]
-        assert [1] == [1]
-        d = [1]
-        assert d == [1]
-        assert True 
-        if len(b) == 1:
-            assert True  and len(b) == 1
-            assert a == a
-            b=a
-            assert b == a
+        b=a
+        assert b == a
+        assert d == d
+        c=d
+        assert c == d
+        assert True
+    else:
+        assert True  and not len(b) == 1
+        assert a == a
+        b=a
+        assert b == a
+        assert a == a
+        c=a
+        assert c == a
+        assert a == a
+        d=a
+        assert d == a
+        assert True
+    assert True # POSTCONDITIE
+
+`,
+  statements: ``,
+  expression: ``
+}, {
+  title: 'Correct use of aliasing',
+  declarations:
+`# Wet Uitgesteld: b
+def method():
+    assert [0] == [0] # PRECONDITIE
+    a = [0]
+    assert a == [0]
+    assert [1] == [1]
+    b = [1]
+    assert b == [1]
+    assert True
+    if len(b) == 1:
+        assert True  and len(b) == 1
+        assert a == a
+        d=a
+        assert d == a
+        assert True
+    else:
+        assert True  and not len(b) == 1
+        assert a == a
+        d=a
+        assert d == a
+        assert a == a
+        b=a
+        assert b == a
+        assert True
+    assert True
+    assert (b[:0] + [3] + b[0:][1:])[0] == 3 # Uitgesteld
+    b[0] = 3
+    assert b[0] == 3  # POSTCONDITIE
+`,
+  statements: ``,
+  expression: ``
+}, {
+  title: 'Aliasing with If statement in If statement. Aliases made in different levels of then and else block with known variables',
+  declarations:
+`def method():
+    assert [0] == [0] # PRECONDITIE
+    a = [0]
+    assert a == [0]
+    assert [1] == [1]
+    b = [1]
+    assert b == [1]
+    assert [1] == [1]
+    c = [1]
+    assert c == [1]
+    assert [1] == [1]
+    d = [1]
+    assert d == [1]
+    assert True
+    if len(b) == 1:
+        assert True  and len(b) == 1
+        assert a == a
+        b=a
+        assert b == a
+        assert True
+        if len(a) == 2:
+            assert True and len(a) == 2
             assert d == d
             c=d
             assert c == d
-            assert True 
+            assert True
         else:
-            assert True  and not len(b) == 1
-            assert a == a
-            b=a
-            assert b == a
+            assert True and not len(a) == 2
             assert a == a
             c=a
             assert c == a
-            assert a == a
-            d=a
-            assert d == a    
-            assert True
-        assert True # POSTCONDITIE
-        
-      `,
-    statements: ``,
-    expression: ``
-  }, {
-    title: 'Correct use of aliasing',
-    declarations:
-    `def method():
-        assert [0] == [0] # PRECONDITIE
-        a = [0]
-        assert a == [0]
-        assert [1] == [1]
-        b = [1]
-        assert b == [1]
-        assert True 
-        if len(b) == 1:
-            assert True  and len(b) == 1
-            assert a == a
-            d=a
-            assert d == a
-            assert True 
-        else:
-            assert True  and not len(b) == 1
-            assert a == a
-            d=a
-            assert d == a  
-            assert a == a
-            b=a
-            assert b == a
             assert True
         assert True
-        assert (b[:0] + [3] + b[0:][1:])[0] == 3 # Uitgesteld
-        b[0] = 3
-        assert b[0] == 3  # POSTCONDITIE
-    # Wet Uitgesteld: b
-    `,
-    statements: ``,
-    expression: ``
-  }, {
-    title: 'Aliasing with If statement in If statement. Aliases made in different levels of then and else block with known variables',
-    declarations:
-    `def method():
-        assert [0] == [0] # PRECONDITIE
-        a = [0]
-        assert a == [0]
-        assert [1] == [1]
-        b = [1]
-        assert b == [1]
-        assert [1] == [1]
-        c = [1]
-        assert c == [1]
-        assert [1] == [1]
-        d = [1]
-        assert d == [1]
-        assert True 
-        if len(b) == 1:
-            assert True  and len(b) == 1
-            assert a == a
-            b=a
-            assert b == a
-            assert True
-            if len(a) == 2:
-                assert True and len(a) == 2
-                assert d == d
-                c=d
-                assert c == d
-                assert True
-            else:
-                assert True and not len(a) == 2
-                assert a == a
-                c=a
-                assert c == a
-                assert True 
-            assert True
-            assert d == d
-            c=d
-            assert c == d
-            assert True 
-        else:
-            assert True  and not len(b) == 1
-            assert a == a
-            d=a
-            assert d == a   
-            assert True
-        assert True # POSTCONDITIE
-    
-    `,
-    statements: ``,
-    expression: ``
-  }, {
-    title: 'Aliasing with while statement full proof. correct use of aliasing.',
-    declarations:
-    `def methode():
-        assert 0 == 0 #PRECONDITIE
-        i = 0
-        assert i == 0
-        assert 5 == 5
-        n = 5
-        assert n == 5
-        assert [5, 5, 5]== [5, 5, 5]
-        a = [5, 5, 5]
-        assert a == [5, 5, 5]
-        assert i <= n # Uitgesteld
-        while  i < n:
-            oude_variant = n - i
-            assert i <= n and i < n and n - i == oude_variant
-            assert i < n and n - i == oude_variant and n - (i + 1) < n - i # Z
-            assert i + 1 <= n and 0 <= n - (i + 1) < oude_variant # Z op 1 of Herschrijven met 2 in 3
-            i = i + 1
-            assert i <= n and 0 <= n - i < oude_variant
-            assert [5] == [5]
-            b = [5]
-            assert b == [5]
-            assert [5, 5] == [5, 5]
-            c = [5, 5]
-            assert c == [5, 5]
-            assert True
-            if i == 4:
-                assert True and i == 4
-                assert a == a
-                b = a
-                assert b == a
-                assert True
-            else: 
-                assert True and not i == 4
-                assert True 
-            assert True
-            assert (a[:1] + [1] + a[1:][1:])[1] == 1 and len(c) == 2 #Uitgesteld
-            a[1] = 1 
-            assert a[1] == 1 and len(c) == 2
-            assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
-        assert i <= n and not i < n #POSTCONDITIE
-    #Wet Uitgesteld : b
-    `,
-    statements: ``,
-    expression: ``
-  }, {
-    title: 'Aliasing with double while loop',
-    declarations:
-    `def methode():
-        assert 0 == 0 #PRECONDITIE
-        i = 0
-        assert i == 0
-        assert 0 == 0
-        j = 0
-        assert j == 0
-        assert 5 == 5
-        n = 5
-        assert n == 5
-        assert [5, 5, 5]== [5, 5, 5]
-        a = [5, 5, 5]
-        assert a == [5, 5, 5]
-        assert i <= n # Uitgesteld
-        while  i < n:
-            oude_variant = n - i
-            assert i <= n and i < n and n - i == oude_variant
-            assert i < n and n - i == oude_variant and n - (i + 1) < n - i # Z
-            assert i + 1 <= n and 0 <= n - (i + 1) < oude_variant # Z op 1 of Herschrijven met 2 in 3
-            i = i + 1
-            assert i <= n and 0 <= n - i < oude_variant
-            assert [1, 5, 5]== [1, 5, 5]
-            b = [1, 5, 5]
-            assert b == [1, 5, 5]
-            assert j <= n # Uitgesteld
-            while  j < n:
-                oude_variant2 = n - j
-                assert j <= n and j < n and n - j == oude_variant2
-                assert j < n and n - j == oude_variant2 and n - (j + 1) < n - j # Z
-                assert j + 1 <= n and 0 <= n - (j + 1) < oude_variant2 # Z op 1 of Herschrijven met 2 in 3
-                j = j + 1
-                assert j <= n and 0 <= n - j < oude_variant2
-                assert a == a
-                c = a
-                assert c == a
-                assert True
-                if i == 4 and j == 1:
-                    assert True and i == 4 and j == 1
-                    assert [1, 2, 3] == [1, 2, 3]
-                    c = [1, 2, 3]
-                    assert c == [1, 2, 3]
-                    assert True
-                else: 
-                    assert True and not (i == 4 and j == 1)
-                    assert True 
-                assert True
-                assert (a[:1] + [0] + a[1:][1:])[1] == 0 and b[0] == 1 #Uitgesteld
-                a[1] = 0 
-                assert a[1] == 0 and b[0] == 1
-                assert j <= n and 0 <= n - j < oude_variant2 #Uitgesteld
-            assert j <= n and not j < n 
-            assert [1, 1, 1] == [1, 1, 1]
-            d = [1, 1, 1]
-            assert d == [1, 1, 1]
-            assert (b[:1] + [0] + b[1:][1:])[1] == 0 and d[0] == 1 #Uitgesteld
-            b[1] = 0 
-            assert b[1] == 0 and d[0] == 1
-            assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
-        assert i <= n and not i < n #POSTCONDITIE
-    #Wet Uitgesteld : b
-    `,
-    statements: ``,
-    expression: ``
-  }, {
-    title: 'Aliasing with double while loop. Makes b and a aliases at end of biggest loop, but b is re-initialised every start of biggest loop. So there is no alias violation in smaller loop',
-    declarations:
-    `def methode():
-        assert 0 == 0 #PRECONDITIE
-        i = 0
-        assert i == 0
-        assert 0 == 0
-        j = 0
-        assert j == 0
-        assert 5 == 5
-        n = 5
-        assert n == 5
-        assert [5, 5, 5]== [5, 5, 5]
-        a = [5, 5, 5]
-        assert a == [5, 5, 5]
-        assert i <= n # Uitgesteld
-        while  i < n:
-            oude_variant = n - i
-            assert i <= n and i < n and n - i == oude_variant
-            assert i < n and n - i == oude_variant and n - (i + 1) < n - i # Z
-            assert i + 1 <= n and 0 <= n - (i + 1) < oude_variant # Z op 1 of Herschrijven met 2 in 3
-            i = i + 1
-            assert i <= n and 0 <= n - i < oude_variant
-            assert [1, 5, 5]== [1, 5, 5]
-            b = [1, 5, 5]
-            assert b == [1, 5, 5]
-            assert j <= n # Uitgesteld
-            while  j < n:
-                oude_variant2 = n - j
-                assert j <= n and j < n and n - j == oude_variant2
-                assert j < n and n - j == oude_variant2 and n - (j + 1) < n - j # Z
-                assert j + 1 <= n and 0 <= n - (j + 1) < oude_variant2 # Z op 1 of Herschrijven met 2 in 3
-                j = j + 1
-                assert j <= n and 0 <= n - j < oude_variant2
-                assert (a[:1] + [0] + a[1:][1:])[1] == 0 and b[0] == 1 #Uitgesteld
-                a[1] = 0 
-                assert a[1] == 0 and b[0] == 1
-                assert j <= n and 0 <= n - j < oude_variant2 #Uitgesteld
-            assert j <= n and not j < n
+        assert d == d
+        c=d
+        assert c == d
+        assert True
+    else:
+        assert True  and not len(b) == 1
+        assert a == a
+        d=a
+        assert d == a
+        assert True
+    assert True # POSTCONDITIE
+`,
+  statements: ``,
+  expression: ``
+}, {
+  title: 'Aliasing with while statement full proof. correct use of aliasing.',
+  declarations:
+`#Wet Uitgesteld : b
+def methode():
+    assert 0 == 0 #PRECONDITIE
+    i = 0
+    assert i == 0
+    assert 5 == 5
+    n = 5
+    assert n == 5
+    assert [5, 5, 5]== [5, 5, 5]
+    a = [5, 5, 5]
+    assert a == [5, 5, 5]
+    assert i <= n # Uitgesteld
+    while  i < n:
+        oude_variant = n - i
+        assert i <= n and i < n and n - i == oude_variant
+        assert i < n and n - i == oude_variant and n - (i + 1) < n - i # Z
+        assert i + 1 <= n and 0 <= n - (i + 1) < oude_variant # Z op 1 of Herschrijven met 2 in 3
+        i = i + 1
+        assert i <= n and 0 <= n - i < oude_variant
+        assert [5] == [5]
+        b = [5]
+        assert b == [5]
+        assert [5, 5] == [5, 5]
+        c = [5, 5]
+        assert c == [5, 5]
+        assert True
+        if i == 4:
+            assert True and i == 4
             assert a == a
             b = a
             assert b == a
-            assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
-        assert i <= n and not i < n #POSTCONDITIE
-    #Wet Uitgesteld : b
-    `,
-    statements: ``,
-    expression: ``
-  },
+            assert True
+        else: 
+            assert True and not i == 4
+            assert True 
+        assert True
+        assert (a[:1] + [1] + a[1:][1:])[1] == 1 and len(c) == 2 #Uitgesteld
+        a[1] = 1 
+        assert a[1] == 1 and len(c) == 2
+        assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
+    assert i <= n and not i < n #POSTCONDITIE
+`,
+statements: ``,
+expression: ``
+}, {
+  title: 'Aliasing with double while loop',
+  declarations:
+`#Wet Uitgesteld : b
+def methode():
+    assert 0 == 0 #PRECONDITIE
+    i = 0
+    assert i == 0
+    assert 0 == 0
+    j = 0
+    assert j == 0
+    assert 5 == 5
+    n = 5
+    assert n == 5
+    assert [5, 5, 5]== [5, 5, 5]
+    a = [5, 5, 5]
+    assert a == [5, 5, 5]
+    assert i <= n # Uitgesteld
+    while  i < n:
+        oude_variant = n - i
+        assert i <= n and i < n and n - i == oude_variant
+        assert i < n and n - i == oude_variant and n - (i + 1) < n - i # Z
+        assert i + 1 <= n and 0 <= n - (i + 1) < oude_variant # Z op 1 of Herschrijven met 2 in 3
+        i = i + 1
+        assert i <= n and 0 <= n - i < oude_variant
+        assert [1, 5, 5]== [1, 5, 5]
+        b = [1, 5, 5]
+        assert b == [1, 5, 5]
+        assert j <= n # Uitgesteld
+        while  j < n:
+            oude_variant2 = n - j
+            assert j <= n and j < n and n - j == oude_variant2
+            assert j < n and n - j == oude_variant2 and n - (j + 1) < n - j # Z
+            assert j + 1 <= n and 0 <= n - (j + 1) < oude_variant2 # Z op 1 of Herschrijven met 2 in 3
+            j = j + 1
+            assert j <= n and 0 <= n - j < oude_variant2
+            assert a == a
+            c = a
+            assert c == a
+            assert True
+            if i == 4 and j == 1:
+                assert True and i == 4 and j == 1
+                assert [1, 2, 3] == [1, 2, 3]
+                c = [1, 2, 3]
+                assert c == [1, 2, 3]
+                assert True
+            else:
+                assert True and not (i == 4 and j == 1)
+                assert True
+            assert True
+            assert (a[:1] + [0] + a[1:][1:])[1] == 0 and b[0] == 1 #Uitgesteld
+            a[1] = 0
+            assert a[1] == 0 and b[0] == 1
+            assert j <= n and 0 <= n - j < oude_variant2 #Uitgesteld
+        assert j <= n and not j < n
+        assert [1, 1, 1] == [1, 1, 1]
+        d = [1, 1, 1]
+        assert d == [1, 1, 1]
+        assert (b[:1] + [0] + b[1:][1:])[1] == 0 and d[0] == 1 #Uitgesteld
+        b[1] = 0
+        assert b[1] == 0 and d[0] == 1
+        assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
+    assert i <= n and not i < n #POSTCONDITIE
+`,
+  statements: ``,
+  expression: ``
+}, {
+  title: 'Aliasing with double while loop. Makes b and a aliases at end of biggest loop, but b is re-initialised every start of biggest loop. So there is no alias violation in smaller loop',
+  declarations:
+`#Wet Uitgesteld : b
+def methode():
+    assert 0 == 0 #PRECONDITIE
+    i = 0
+    assert i == 0
+    assert 0 == 0
+    j = 0
+    assert j == 0
+    assert 5 == 5
+    n = 5
+    assert n == 5
+    assert [5, 5, 5]== [5, 5, 5]
+    a = [5, 5, 5]
+    assert a == [5, 5, 5]
+    assert i <= n # Uitgesteld
+    while  i < n:
+        oude_variant = n - i
+        assert i <= n and i < n and n - i == oude_variant
+        assert i < n and n - i == oude_variant and n - (i + 1) < n - i # Z
+        assert i + 1 <= n and 0 <= n - (i + 1) < oude_variant # Z op 1 of Herschrijven met 2 in 3
+        i = i + 1
+        assert i <= n and 0 <= n - i < oude_variant
+        assert [1, 5, 5]== [1, 5, 5]
+        b = [1, 5, 5]
+        assert b == [1, 5, 5]
+        assert j <= n # Uitgesteld
+        while  j < n:
+            oude_variant2 = n - j
+            assert j <= n and j < n and n - j == oude_variant2
+            assert j < n and n - j == oude_variant2 and n - (j + 1) < n - j # Z
+            assert j + 1 <= n and 0 <= n - (j + 1) < oude_variant2 # Z op 1 of Herschrijven met 2 in 3
+            j = j + 1
+            assert j <= n and 0 <= n - j < oude_variant2
+            assert (a[:1] + [0] + a[1:][1:])[1] == 0 and b[0] == 1 #Uitgesteld
+            a[1] = 0
+            assert a[1] == 0 and b[0] == 1
+            assert j <= n and 0 <= n - j < oude_variant2 #Uitgesteld
+        assert j <= n and not j < n
+        assert a == a
+        b = a
+        assert b == a
+        assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
+    assert i <= n and not i < n #POSTCONDITIE
+`,
+statements: ``,
+expression: ``
+},
 ];
 
 async function testPyLearner() {

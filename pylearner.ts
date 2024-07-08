@@ -1163,6 +1163,9 @@ class CallExpression extends Expression {
 }
 
 abstract class Type {
+  containsInferredType(inferredType: InferredType) {
+    return false;
+  }
   isListType() {
     return false;
   }
@@ -1205,6 +1208,8 @@ class InferredType extends Type {
       return this.type.equals(other);
     if (this.isAddable_ && !other.isAddable())
       return false;
+    if (other.containsInferredType(this))
+      return false;
     this.type = other;
     return true;
   }
@@ -1222,6 +1227,9 @@ class InferredType extends Type {
       return this.type.isListType();
     this.type = new ListType(new InferredType());
     return true;
+  }
+  containsInferredType(inferredType: InferredType): boolean {
+    return inferredType == this || this.type != null && this.type.containsInferredType(inferredType);
   }
 }
 
@@ -1296,6 +1304,9 @@ class ListType extends ReferenceType {
   }
   isListType(): boolean {
       return true;
+  }
+  containsInferredType(inferredType: InferredType): boolean {
+    return this.elementType.containsInferredType(inferredType);
   }
 }
 

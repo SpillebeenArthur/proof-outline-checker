@@ -4955,7 +4955,8 @@ expression: `fibonacci(7)`
 ]
 const aliasViolationExampleSameVariableAssigment: TestCase = {
   declarations:
-  `def method():
+`# Wet Uitgesteld: b
+def method():
     assert [0] == [0] # PRECONDITIE
     a = [0]
     assert a == [0]
@@ -4968,15 +4969,15 @@ const aliasViolationExampleSameVariableAssigment: TestCase = {
     assert (b[:0] + [3] + b[0:][1:])[0] == 3 and a[0] == 1 # Uitgesteld
     b[0] = 3
     assert b[0] == 3 and  a[0] == 1 # POSTCONDITIE
-  # Wet Uitgesteld: b
   `,
   errorMessage: `Deze opdracht die het list-object b muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als b`,
-  locStart: 255,
-  locEnd: 256
+  locStart: 275,
+  locEnd: 276
 }
 const aliasViolationExampleIfLocalVariable: TestCase = {
   declarations:
-  `def method(x):
+`# Wet Uitgesteld: b
+def method(x):
     assert [0] == [0] # PRECONDITIE
     a = [0]
     assert a == [0]
@@ -4985,340 +4986,334 @@ const aliasViolationExampleIfLocalVariable: TestCase = {
     assert b == [5]
     assert True
     if x == True:
-      assert True and x == True
-      assert a == a
-      d = a
-      assert d == a
-      assert True
+        assert True and x == True
+        assert a == a
+        d = a
+        assert d == a
+        assert True
     else:
-      assert True and not x == True
-      assert a == a
-      d = a
-      assert d == a
-      assert a == a
-      b = a
-      assert b == a    
-      assert True
+        assert True and not x == True
+        assert a == a
+        d = a
+        assert d == a
+        assert a == a
+        b = a
+        assert b == a
+        assert True
     assert True
-    assert (b[:0] + [3] + b[0:][1:])[0] == 3 and a[0] == 1 # Uitgesteld 
+    assert (b[:0] + [3] + b[0:][1:])[0] == 3 and a[0] == 1 # Uitgesteld
     b[0] = 3
     assert b[0] == 3 and  a[0] == 1 # POSTCONDITIE
-  # Wet Uitgesteld: b
-  `,
+`,
   errorMessage: `Deze opdracht die het list-object b muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als b`,
-  locStart: 543,
-  locEnd: 544,
+  locStart: 584,
+  locEnd: 585,
 };
 const aliasViolationExampleWhileWithIf: TestCase = {
   declarations:
-  `def methode():
-
-      assert [8] == [8] #PRECONDITIE PARTIËLE CORRECTHEID
-      d = [8]
-      assert d == [8]
-      assert [4] == [4]
-      c = [4]
-      assert c == [4]
-      assert [1] == [1]
-      a = [1]
-      assert a == [1]
-      assert [5] == [5]
-      b = [5]
-      assert b == [5]
-      assert len(a) == 1 
-      while  a[0] != b[0]:
-          assert len(a) == 1 and a[0] != b[0]
-          assert True 
-          if a[0] < b[0]:
-              assert True and a[0] < b[0]
-              assert a[0] == a[0]
-              i = a[0]
-              assert i == a[0]
-              assert (a[:0] + [i+1] + a[0:][1:])[0] == i + 1
-              a[0] = i + 1
-              assert a[0] == i + 1
-              assert True 
-          else:
-              assert True  and not a[0] < b[0]
-              assert b[0] == b[0]
-              i = b[0]
-              assert i == b[0]
-              assert (b[:0] + [i+1] + b[0:][1:])[0] == i + 1
-              b[0] = i + 1
-              assert b[0] == i + 1
-              assert d == d
-              c = d
-              assert c == d
-              assert True
-          assert True
-          assert len(a) == 1   
-      assert len(a) == 1 and not a[0] != b[0]  
-      assert (d[:0] + [3] + d[0:][1:])[0] == 5 and c[0] == 5 
-      d[0] = 5
-      assert d[0] == 5 and c[0] == 5 # POSTCONDITIE
-      return a[0]
-
-  `,
+`def methode():
+    assert [8] == [8] #PRECONDITIE PARTIËLE CORRECTHEID
+    d = [8]
+    assert d == [8]
+    assert [4] == [4]
+    c = [4]
+    assert c == [4]
+    assert [1] == [1]
+    a = [1]
+    assert a == [1]
+    assert [5] == [5]
+    b = [5]
+    assert b == [5]
+    assert len(a) == 1
+    while  a[0] != b[0]:
+        assert len(a) == 1 and a[0] != b[0]
+        assert True
+        if a[0] < b[0]:
+            assert True and a[0] < b[0]
+            assert a[0] == a[0]
+            i = a[0]
+            assert i == a[0]
+            assert (a[:0] + [i+1] + a[0:][1:])[0] == i + 1
+            a[0] = i + 1
+            assert a[0] == i + 1
+            assert True
+        else:
+            assert True  and not a[0] < b[0]
+            assert b[0] == b[0]
+            i = b[0]
+            assert i == b[0]
+            assert (b[:0] + [i+1] + b[0:][1:])[0] == i + 1
+            b[0] = i + 1
+            assert b[0] == i + 1
+            assert d == d
+            c = d
+            assert c == d
+            assert True
+        assert True
+        assert len(a) == 1
+    assert len(a) == 1 and not a[0] != b[0]
+    assert (d[:0] + [3] + d[0:][1:])[0] == 5 and c[0] == 5
+    d[0] = 5
+    assert d[0] == 5 and c[0] == 5 # POSTCONDITIE
+    return a[0]
+`,
   errorMessage: `Deze opdracht die het list-object d muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als d`,
-  locStart: 1269,
-  locEnd: 1270
+  locStart: 1175,
+  locEnd: 1176
 };
 const aliasViolationExampleIfBasic: TestCase = {
   declarations:
-  `def method(x, y):
-  assert [0, 2, 3] == [0, 2, 3] # PRECONDITIE
-  a = [0, 2, 3]
-  assert a == [0, 2, 3]
-  assert  y == y
-  b = y
-  assert b == y
-  assert True
-  if x == True:
-    assert True and x == True
-    assert b == b
-    a = b
-    assert a == a    
+`# Wet Uitgesteld: b
+def method(x, y):
+    assert [0, 2, 3] == [0, 2, 3] # PRECONDITIE
+    a = [0, 2, 3]
+    assert a == [0, 2, 3]
+    assert  y == y
+    b = y
+    assert b == y
     assert True
-  else:
-    assert True and not x == True
-    assert True 
-  assert True
-  assert (a[:-1] + [3] + a[-1:][1:])[1] == 3 and b[1] == 3 # Uitgesteld 
-  a[-1] = 3
-  assert a[-1] == 3 and b[1] == 3 # POSTCONDITIE
-  return a[0]
-# Wet Uitgesteld: b
-  `,
+    if x == True:
+        assert True and x == True
+        assert b == b
+        a = b
+        assert a == a
+        assert True
+    else:
+        assert True and not x == True
+        assert True
+    assert True
+    assert (a[:-1] + [3] + a[-1:][1:])[1] == 3 and b[1] == 3 # Uitgesteld
+    a[-1] = 3
+    assert a[-1] == 3 and b[1] == 3 # POSTCONDITIE
+    return a[0]
+`,
   errorMessage: `Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a`,
-  locStart: 425,
-  locEnd: 426
+  locStart: 491,
+  locEnd: 492
 };
 const aliasViolationExampleDoubleIfs: TestCase = {
   declarations:
-      `def method():
-      assert [0] == [0] # PRECONDITIE
-      a = [0]
-      assert a == [0]
-      assert [1] == [1]
-      b = [1]
-      assert b == [1]
-      assert [1] == [1]
-      c = [1]
-      assert c == [1]
-      assert [1] == [1]
-      d = [1]
-      assert d == [1]
-      assert True 
-      if len(b) == 1:
+`def method():
+    assert [0] == [0] # PRECONDITIE
+    a = [0]
+    assert a == [0]
+    assert [1] == [1]
+    b = [1]
+    assert b == [1]
+    assert [1] == [1]
+    c = [1]
+    assert c == [1]
+    assert [1] == [1]
+    d = [1]
+    assert d == [1]
+    assert True
+    if len(b) == 1:
         assert True  and len(b) == 1
         assert a == a
         b=a
-        assert b == a 
+        assert b == a
         assert (b[:0] + [2] + b[0:][1:])[0] == 2 and c[0] == 1 and len(d) == 1
         b[0] = 2
         assert b[0] == 2 and c[0] == 1 and len(d) == 1
         assert True
         if len(a) == 2:
-          assert True and len(a) == 2
-          assert d == d
-          c=d
-          assert c == d
-          assert True
+            assert True and len(a) == 2
+            assert d == d
+            c=d
+            assert c == d
+            assert True
         else :
-          assert True and not len(a) == 2
-          assert a == a
-          c=a
-          assert c == a
-          assert True 
+            assert True and not len(a) == 2
+            assert a == a
+            c=a
+            assert c == a
+            assert True
         assert True
         assert (c[:0] + [3] + c[0:][1:])[0] == 3 and b[0] == 1
         c[0] = 3
         assert c[0] == 3 and b[0] == 1
-        assert True 
-      else:
+        assert True
+    else:
         assert True  and not len(b) == 1
         assert a == a
         d=a
-        assert d == a   
+        assert d == a
         assert True
-      assert True # POSTCONDITIE
-      `,
+    assert True # POSTCONDITIE
+`,
   errorMessage: `Deze opdracht die het list-object c muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als c`,
-  locStart: 958,
-  locEnd: 959,
+  locStart: 947,
+  locEnd: 948,
 };
 const aliasViolationExampleLocalVarsInWhile: TestCase = {
   declarations:
-  `def methode():
-  assert True #PRECONDITIE PARTIELE CORRECTHEID
-  assert 0 == 0
-  i = 0
-  assert i == i
-  assert True
-  while i == 0:
-    assert True and i == 0
-    assert [1, 2, 3] == [1, 2, 3]
-    a = [1, 2, 3]
-    assert a == [1, 2, 3]
-    assert a == a
-    b = a
-    assert b == a
-    assert (a[:i] + [5] + a[i:][1:])[i] == 5 and b[i] == 5 # Uitgesteld
-    a[i] = 5
-    assert a[i] == 5 and b[i] == 5
-    assert 1 == 1
-    i = 1
-    assert i == 1
+`# Wet Uitgesteld: b
+def methode():
+    assert True #PRECONDITIE PARTIELE CORRECTHEID
+    assert 0 == 0
+    i = 0
+    assert i == i
     assert True
-  assert True and not i == 0 #POSTCONDITIE
-  # Wet Uitgesteld: b
-  `,
+    while i == 0:
+        assert True and i == 0
+        assert [1, 2, 3] == [1, 2, 3]
+        a = [1, 2, 3]
+        assert a == [1, 2, 3]
+        assert a == a
+        b = a
+        assert b == a
+        assert (a[:i] + [5] + a[i:][1:])[i] == 5 and b[i] == 5 # Uitgesteld
+        a[i] = 5
+        assert a[i] == 5 and b[i] == 5
+        assert 1 == 1
+        i = 1
+        assert i == 1
+        assert True
+    assert True and not i == 0 #POSTCONDITIE
+`,
   errorMessage: `Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a`,
-  locStart: 365,
-  locEnd: 366
+  locStart: 433,
+  locEnd: 434
 };
 const aliasViolationExampleViolationInLastLoopOfLus: TestCase = {
   declarations:
-  `def methode():
-  assert 0 == 0 #PRECONDITIE
-  i = 0
-  assert i == 0
-  assert 5 == 5
-  n = 5
-  assert n == 5
-  assert [5, 5, 5]== [5, 5, 5]
-  a = [5, 5, 5]
-  assert a == [5, 5, 5]
-  assert i <= n # Uitgesteld
-  while  i < n:
-    oude_variant = n - i
-    assert i <= n and i < n and n - i == oude_variant
-    assert i < n and n - i == oude_variant and n - (i + 1) < n - i # Z
-    assert i + 1 <= n and 0 <= n - (i + 1) < oude_variant # Z op 1 of Herschrijven met 2 in 3
-    i = i + 1
-    assert i <= n and 0 <= n - i < oude_variant
-    assert [5] == [5]
-    b = [5]
-    assert b == [5]
-    assert True
-    if i == 4:
-      assert True and i == 4
-      assert a == a
-      b = a
-      assert b == a
-      assert True
-    else: 
-      assert True and not i == 4
-      assert True 
-    assert True
-    assert (a[:1] + [1] + a[1:][1:])[1] == 1 and b == [5] #Uitgesteld
-    a[1] = 1 
-    assert a[1] == 1 and b == [5]
-    assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
-  assert i <= n and not i < n #POSTCONDITIE
-  
-  #Wet Uitgesteld : b
-  `,
+`#Wet Uitgesteld : b
+def methode():
+    assert 0 == 0 #PRECONDITIE
+    i = 0
+    assert i == 0
+    assert 5 == 5
+    n = 5
+    assert n == 5
+    assert [5, 5, 5]== [5, 5, 5]
+    a = [5, 5, 5]
+    assert a == [5, 5, 5]
+    assert i <= n # Uitgesteld
+    while  i < n:
+        oude_variant = n - i
+        assert i <= n and i < n and n - i == oude_variant
+        assert i < n and n - i == oude_variant and n - (i + 1) < n - i # Z
+        assert i + 1 <= n and 0 <= n - (i + 1) < oude_variant # Z op 1 of Herschrijven met 2 in 3
+        i = i + 1
+        assert i <= n and 0 <= n - i < oude_variant
+        assert [5] == [5]
+        b = [5]
+        assert b == [5]
+        assert True
+        if i == 4:
+            assert True and i == 4
+            assert a == a
+            b = a
+            assert b == a
+            assert True
+        else:
+            assert True and not i == 4
+            assert True
+        assert True
+        assert (a[:1] + [1] + a[1:][1:])[1] == 1 and b == [5] #Uitgesteld
+        a[1] = 1
+        assert a[1] == 1 and b == [5]
+        assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
+    assert i <= n and not i < n #POSTCONDITIE
+`,
   errorMessage: `Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a`,
-  locStart: 872,
-  locEnd: 873
+  locStart: 1014,
+  locEnd: 1015
 };
 const aliasViolationExampleDoubleWhileLusMultipleLoopings: TestCase = {
   declarations:
-  `def methode():
-  assert 0 == 0 #PRECONDITIE
-  i = 0
-  assert i == 0
-  assert 0 == 0
-  j = 0
-  assert j == 0
-  assert 5 == 5
-  n = 5
-  assert n == 5
-  assert [5, 5, 5]== [5, 5, 5]
-  a = [5, 5, 5]
-  assert a == [5, 5, 5]
-  assert [1, 5, 5]== [1, 5, 5]
-  b = [1, 5, 5]
-  assert b == [1, 5, 5]
-  assert i <= n # Uitgesteld
-  while  i < n:
-    oude_variant = n - i
-    assert i <= n and i < n and n - i == oude_variant
-    assert i < n and n - i == oude_variant and n - (i + 1) < n - i # Z
-    assert i + 1 <= n and 0 <= n - (i + 1) < oude_variant # Z op 1 of Herschrijven met 2 in 3
-    i = i + 1
-    assert i <= n and 0 <= n - i < oude_variant
-    assert (a[:1] + [0] + a[1:][1:])[1] == 0 and b[0] == 1 #Uitgesteld
-    a[1] = 0
-    assert a[1] == 0 and b[0] == 1
-    assert j <= n # Uitgesteld
-    while  j < n:
-      oude_variant2 = n - j
-      assert j <= n and j < n and n - j == oude_variant2
-      assert j < n and n - j == oude_variant2 and n - (j + 1) < n - j # Z
-      assert j + 1 <= n and 0 <= n - (j + 1) < oude_variant2 # Z op 1 of Herschrijven met 2 in 3
-      j = j + 1
-      assert j <= n and 0 <= n - j < oude_variant2
-      assert a == a
-      b = a
-      assert b == a
-      assert j <= n and 0 <= n - j < oude_variant2 #Uitgesteld
-    assert j <= n and not j < n
-    assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
-  assert i <= n and not i < n #POSTCONDITIE
-  
-  #Wet Uitgesteld : b
-  `,
+`#Wet Uitgesteld : b
+def methode():
+    assert 0 == 0 #PRECONDITIE
+    i = 0
+    assert i == 0
+    assert 0 == 0
+    j = 0
+    assert j == 0
+    assert 5 == 5
+    n = 5
+    assert n == 5
+    assert [5, 5, 5]== [5, 5, 5]
+    a = [5, 5, 5]
+    assert a == [5, 5, 5]
+    assert [1, 5, 5]== [1, 5, 5]
+    b = [1, 5, 5]
+    assert b == [1, 5, 5]
+    assert i <= n # Uitgesteld
+    while  i < n:
+        oude_variant = n - i
+        assert i <= n and i < n and n - i == oude_variant
+        assert i < n and n - i == oude_variant and n - (i + 1) < n - i # Z
+        assert i + 1 <= n and 0 <= n - (i + 1) < oude_variant # Z op 1 of Herschrijven met 2 in 3
+        i = i + 1
+        assert i <= n and 0 <= n - i < oude_variant
+        assert (a[:1] + [0] + a[1:][1:])[1] == 0 and b[0] == 1 #Uitgesteld
+        a[1] = 0
+        assert a[1] == 0 and b[0] == 1
+        assert j <= n # Uitgesteld
+        while  j < n:
+            oude_variant2 = n - j
+            assert j <= n and j < n and n - j == oude_variant2
+            assert j < n and n - j == oude_variant2 and n - (j + 1) < n - j # Z
+            assert j + 1 <= n and 0 <= n - (j + 1) < oude_variant2 # Z op 1 of Herschrijven met 2 in 3
+            j = j + 1
+            assert j <= n and 0 <= n - j < oude_variant2
+            assert a == a
+            b = a
+            assert b == a
+            assert j <= n and 0 <= n - j < oude_variant2 #Uitgesteld
+        assert j <= n and not j < n
+        assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
+    assert i <= n and not i < n #POSTCONDITIE
+`,
   errorMessage: `Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a`,
-  locStart: 721,
-  locEnd: 722
+  locStart: 807,
+  locEnd: 808
 };
 const aliasViolationExampleSingleWhileLusMultipleLoopings: TestCase = {
   declarations:
-  `def methode(x):
-  assert 0 == 0 #PRECONDITIE
-  i = 0
-  assert i == 0
-  assert 5 == 5
-  n = 5
-  assert n == 5
-  assert [5, 5, 5]== [5, 5, 5]
-  a = [5, 5, 5]
-  assert a == [5, 5, 5]
-  assert [1, 5, 5]== [1, 5, 5]
-  b = [1, 5, 5]
-  assert b == [1, 5, 5]
-  assert i <= n # Uitgesteld
-  while  i < n:
-    oude_variant = n - i
-    assert i <= n and i < n and n - i == oude_variant
-    assert i < n and n - i == oude_variant and n - (i + 1) < n - i # Z
-    assert i + 1 <= n and 0 <= n - (i + 1) < oude_variant # Z op 1 of Herschrijven met 2 in 3
-    i = i + 1
-    assert i <= n and 0 <= n - i < oude_variant
-    assert (b[:1] + [0] + b[1:][1:])[1] == 0 and a[0] == 1 #Uitgesteld
-    b[1] = 0 
-    assert b[1] == 0 and a[0] == 1
-    assert True
-    if x == True:
-      assert True and x == True
-      assert b == b
-      a = b
-      assert a == a    
-      assert True
-    else:
-      assert True and not x == True
-      assert True 
-    assert True
-    assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
-  assert i <= n and not i < n #POSTCONDITIE
-  
-  #Wet Uitgesteld : b
-  `,
+`#Wet Uitgesteld : b
+def methode(x):
+    assert 0 == 0 #PRECONDITIE
+    i = 0
+    assert i == 0
+    assert 5 == 5
+    n = 5
+    assert n == 5
+    assert [5, 5, 5]== [5, 5, 5]
+    a = [5, 5, 5]
+    assert a == [5, 5, 5]
+    assert [1, 5, 5]== [1, 5, 5]
+    b = [1, 5, 5]
+    assert b == [1, 5, 5]
+    assert i <= n # Uitgesteld
+    while  i < n:
+        oude_variant = n - i
+        assert i <= n and i < n and n - i == oude_variant
+        assert i < n and n - i == oude_variant and n - (i + 1) < n - i # Z
+        assert i + 1 <= n and 0 <= n - (i + 1) < oude_variant # Z op 1 of Herschrijven met 2 in 3
+        i = i + 1
+        assert i <= n and 0 <= n - i < oude_variant
+        assert (b[:1] + [0] + b[1:][1:])[1] == 0 and a[0] == 1 #Uitgesteld
+        b[1] = 0
+        assert b[1] == 0 and a[0] == 1
+        assert True
+        if x == True:
+            assert True and x == True
+            assert b == b
+            a = b
+            assert a == a
+            assert True
+        else:
+            assert True and not x == True
+            assert True
+        assert True
+        assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
+    assert i <= n and not i < n #POSTCONDITIE
+`,
   errorMessage: `Deze opdracht die het list-object b muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als b`,
-  locStart: 682,
-  locEnd: 683
+  locStart: 762,
+  locEnd: 763
 };
 
 function setExample(example: Example) {
@@ -5372,6 +5367,7 @@ async function testExamples(examples: Example[]) {
 
 async function testAliasingViolationTestCase(testCase: TestCase) {
   const {declarations, errorMessage, locStart, locEnd} = testCase
+  lawComments = [];
   let decls = parseDeclarations(mkLocFactory(declarations), declarations, processComment);
   checkDeclarations(decls);
   checkLaws();
@@ -5477,23 +5473,20 @@ const hiddenTests = [{
   title: 'Simple alias example',
   declarations:
 `def method():
-  
     assert [1] == [1] # PRECONDITIE
     a = [1]
     assert a == [1]
     assert a == a
     b = a
     assert b == a # POSTCONDITIE
-  
 `,
   statements:
   ``,
-  expression: `` 
+  expression: ``
 }, {
   title: 'breaking alias example',
   declarations:
 `def method():
-  
     assert [0] == [0] # PRECONDITIE
     a = [0]
     assert a == [0]
@@ -5502,14 +5495,13 @@ const hiddenTests = [{
     assert b == [1]
     assert [1] == [1]
     c = [1]
-    assert c == [1] 
-    assert a == a 
+    assert c == [1]
+    assert a == a
     b = a
-    assert b == a 
-    assert [0] == [0] 
+    assert b == a
+    assert [0] == [0]
     a = [0]
     assert a == [0] # POSTCONDITIE
-
 `,
   statements: ``,
   expression: ``
@@ -5517,7 +5509,6 @@ const hiddenTests = [{
   title: 'while lus alias example, without proof outline',
   declarations:
 `def methode():
-
     i = 0
     n = 3
     a = [1]
@@ -5525,7 +5516,6 @@ const hiddenTests = [{
     while  i < n:
         b = a
         i = i + 1
-
 `,
   statements: ``,
   expression: ``
@@ -5559,7 +5549,7 @@ def method():
     assert [1] == [1]
     d = [1]
     assert d == [1]
-    assert True 
+    assert True
     if len(b) == 1:
         assert True  and len(b) == 1
         assert a == a
@@ -5582,7 +5572,6 @@ def method():
         assert d == a
         assert True
     assert True # POSTCONDITIE
-
 `,
   statements: ``,
   expression: ``
@@ -5705,12 +5694,12 @@ def methode():
             b = a
             assert b == a
             assert True
-        else: 
+        else:
             assert True and not i == 4
-            assert True 
+            assert True
         assert True
         assert (a[:1] + [1] + a[1:][1:])[1] == 1 and len(c) == 2 #Uitgesteld
-        a[1] = 1 
+        a[1] = 1
         assert a[1] == 1 and len(c) == 2
         assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
     assert i <= n and not i < n #POSTCONDITIE

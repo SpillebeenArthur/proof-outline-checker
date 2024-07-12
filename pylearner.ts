@@ -1034,36 +1034,24 @@ class AppendExpression extends Expression {
   check(env: Scope) {
     let targetType = this.target.check_(env);
     if (!(targetType.isListType()))
-      this.executionError("Het doel van een element-uitdrukking moet een lijst zijn");
+      this.executionError("Het doel van een append-uitdrukking moet een lijst zijn");
     this.item.checkAgainst(env, intType);
     return targetType;
   }
 
-  async evaluateBinding(env: Scope) {
+  async evaluate(env: Scope) {
     await this.target.evaluate(env);
     await this.item.evaluate(env);
-
-    return (pop?: (nbOperands: number) => Value[]) => {
-      let [target, index] = pop!(2);
-      if (!(target instanceof ListObject))
-        this.executionError(target + " is geen lijst");
-      if (index < 0)
-        index += target.length;
-      if (index < 0)
-        this.executionError("Negative lijst-index " + index);
-      if (target.length <= index)
-        this.executionError("Lijst-index " + index + " is niet kleiner dan de lengte " + target.length + " van de lijst");
-      return target.fields[index];
-    }
+    let [target, item] = pop(2);
+    if (!(target instanceof ListObject))
+      this.executionError(target + " is geen lijst");
+    let bindingThunk = await this.target.evaluateBinding(env);
+    let listVariable = bindingThunk(pop);
+    let newElements = target.getElements();
+    newElements.push(item);
+    const newListObject = new ListObject(target.elementType, newElements);
+    this.push(listVariable.setValue(newListObject));
   }
-
-  async evaluate(env: Scope): Promise<Value> {
-    let bindingThunk = await this.evaluateBinding(env);
-    await this.breakpoint();
-    this.push(bindingThunk(pop).value);
-    
-  }
-
 }
 
 class SubscriptExpression extends Expression {
@@ -1937,10 +1925,7 @@ function parseProofOutlineExpression(e: Expression): Term_ {
     if (!(e.target.type!.unwrapInferredType() as ListType).elementType.equals(intType))
       e.executionError("Lijsten waarvan de elementen geen int-waarden zijn worden nog niet ondersteund in bewijssilhouetten");
     return App(e.loc, App(e.loc, Const(e.loc, intListSubscriptConst), parseProofOutlineExpression(e.target)), parseProofOutlineExpression(e.index));
-  } //else if (e instanceof AppendExpression) {
-    //
-  //} 
-  else
+  } else
     e.executionError("Deze vorm van uitdrukking wordt nog niet ondersteund in een bewijssilhouet");
 }
 
@@ -2134,8 +2119,6 @@ function parseProofOutline(stmts: Statement[], i: number, precededByAssert: bool
       return stmt.executionError(`Toekenningen aan variabelen van het type ${lhs.type} worden nog niet ondersteund.`);
     });
     return Seq(Assign(stmt.loc, x, parseProofOutlineExpression(stmt.expr.rhs)), parseProofOutline(stmts, i + 1, false));
-
-
   } else if (stmt instanceof ExpressionStatement && stmt.expr instanceof AppendExpression) {
     const appendTargetExpression = stmt.expr.target;
     if (!(appendTargetExpression instanceof VariableExpression))
@@ -5949,8 +5932,24 @@ def method():
 `,
 statements: ``,
 expression: ``
+}, {
+  title: 'Repeat-method to retrieve list of n times x',
+  declarations: 
+`def repeat(n,x):
+  i = 0
+  list = []
+  while i < n:
+    list.append(x)
+    i = i + 1
+  return list
+`,
+statements: 
+`assert repeat(0,1) == []
+assert repeat(1,5) == [5]
+assert repeat(4,3) == [3,3,3,3]
+`,
+expression: `repeat(5,1)`
 }
-
 ];
 
 async function testPyLearner() {

@@ -792,6 +792,22 @@ function createHeapObjectDOMNode(object: JavaObject) {
   return node;
 }
 
+function AddNewFieldToListHeapObjectDOMNode(object: ListObject) {
+  let fieldIndex = object.length.toString();
+  let fieldRow = document.createElement('tr');
+  object.domNode.appendChild(fieldRow);
+  let nameCell = document.createElement('td');
+  fieldRow.appendChild(nameCell);
+  nameCell.className = 'field-name';
+  nameCell.innerText = fieldIndex;
+  let valueCell = document.createElement('td');
+  fieldRow.appendChild(valueCell);
+  valueCell.className = 'field-value';
+  valueCell.innerText = object.fields[fieldIndex].value;
+  object.fields[fieldIndex].valueCell = valueCell;
+  return object.domNode;
+}
+
 function updateFieldArrows() {
   for (let o of objectsShown)
     o.updateFieldArrows();
@@ -901,6 +917,14 @@ class ListObject extends JavaObject {
     for (let i = 0; i < this.length; i++)
       result.push(this.fields[i].value);
     return result;
+  }
+  add(item: Value) {
+    let newField = this.length.toString();
+    this.fields[newField] = new FieldBinding(item);
+    if (typeof document !== 'undefined')
+      this.domNode = AddNewFieldToListHeapObjectDOMNode(this);
+    this.length++
+    return this;
   }
   plus(other: ListObject) {
     return new ListObject(this.elementType, this.getElements().concat(other.getElements()));
@@ -1045,12 +1069,8 @@ class AppendExpression extends Expression {
     let [target, item] = pop(2);
     if (!(target instanceof ListObject))
       this.executionError(target + " is geen lijst");
-    let bindingThunk = await this.target.evaluateBinding(env);
-    let listVariable = bindingThunk(pop);
-    let newElements = target.getElements();
-    newElements.push(item);
-    const newListObject = new ListObject(target.elementType, newElements);
-    this.push(listVariable.setValue(newListObject));
+    let adaptedListObject = target.add(item);
+    this.push(adaptedListObject);
   }
 }
 

@@ -1060,12 +1060,13 @@ class AppendExpression extends Expression {
     if (!(targetType.isListType()))
       this.executionError("Het doel van een append-uitdrukking moet een lijst zijn");
     this.item.checkAgainst(env, intType);
-    return targetType;
+    return voidType;
   }
 
   async evaluate(env: Scope) {
     await this.target.evaluate(env);
     await this.item.evaluate(env);
+    await this.breakpoint();
     let [target, item] = pop(2);
     if (!(target instanceof ListObject))
       this.executionError(target + " is geen lijst");

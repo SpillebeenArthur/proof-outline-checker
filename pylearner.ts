@@ -792,6 +792,22 @@ function createHeapObjectDOMNode(object: JavaObject) {
   return node;
 }
 
+function AddNewFieldToListHeapObjectDOMNode(object: ListObject) {
+  let fieldIndex = object.length.toString();
+  let fieldRow = document.createElement('tr');
+  object.domNode.appendChild(fieldRow);
+  let nameCell = document.createElement('td');
+  fieldRow.appendChild(nameCell);
+  nameCell.className = 'field-name';
+  nameCell.innerText = fieldIndex;
+  let valueCell = document.createElement('td');
+  fieldRow.appendChild(valueCell);
+  valueCell.className = 'field-value';
+  valueCell.innerText = object.fields[fieldIndex].value;
+  object.fields[fieldIndex].valueCell = valueCell;
+  return object.domNode;
+}
+
 function updateFieldArrows() {
   for (let o of objectsShown)
     o.updateFieldArrows();
@@ -901,6 +917,14 @@ class ListObject extends JavaObject {
     for (let i = 0; i < this.length; i++)
       result.push(this.fields[i].value);
     return result;
+  }
+  add(item: Value) {
+    let newFieldIndex = this.length.toString();
+    this.fields[newFieldIndex] = new FieldBinding(item);
+    if (typeof document !== 'undefined')
+      this.domNode = AddNewFieldToListHeapObjectDOMNode(this);
+    this.length++
+    return this;
   }
   plus(other: ListObject) {
     return new ListObject(this.elementType, this.getElements().concat(other.getElements()));
@@ -1024,6 +1048,30 @@ class SelectExpression extends Expression {
     let bindingThunk = await this.evaluateBinding(env, true);
     await this.breakpoint();
     this.push(bindingThunk(pop).value);
+  }
+}
+class AppendExpression extends Expression {
+  constructor(loc: Loc, instrLoc: Loc, public target: Expression, public item: Expression) {
+    super(loc, instrLoc);
+  }
+
+  check(env: Scope) {
+    let targetType = this.target.check_(env);
+    if (!(targetType.isListType()))
+      this.executionError("Het doel van een append-uitdrukking moet een lijst zijn");
+    this.item.checkAgainst(env, intType);
+    return voidType;
+  }
+
+  async evaluate(env: Scope) {
+    await this.target.evaluate(env);
+    await this.item.evaluate(env);
+    await this.breakpoint();
+    let [target, item] = pop(2);
+    if (!(target instanceof ListObject))
+      this.executionError(target + " is geen lijst");
+    target.add(item);
+    this.push("void");
   }
 }
 
@@ -2092,6 +2140,25 @@ function parseProofOutline(stmts: Statement[], i: number, precededByAssert: bool
       return stmt.executionError(`Toekenningen aan variabelen van het type ${lhs.type} worden nog niet ondersteund.`);
     });
     return Seq(Assign(stmt.loc, x, parseProofOutlineExpression(stmt.expr.rhs)), parseProofOutline(stmts, i + 1, false));
+  } else if (stmt instanceof ExpressionStatement && stmt.expr instanceof AppendExpression) {
+    const appendTargetExpression = stmt.expr.target;
+    if (!(appendTargetExpression instanceof VariableExpression))
+      return stmt.executionError(`append-methodes aan dit type worden nog niet ondersteund.`);
+    const proofOutlineVariableOfTarget = appendTargetExpression.getProofOutlineVariable(() => {
+      return stmt.executionError(`append-methodes aan variabelen van het type ${stmt.expr.type} worden nog niet ondersteund.`);
+    });
+    const previousStatement = stmts[i-1];
+    const appendTargetExpressionName = appendTargetExpression.name;
+    if (!(previousStatement instanceof AssertStatement))
+      return stmt.executionError(`Opdracht moet worden voorafgegaan door een assert statement`);
+    if (preconditionHasMayAlias(previousStatement.condition, appendTargetExpressionName, stmt.mayAliasRelation!))
+      return stmt.expr.executionError(`Deze opdracht die het list-object ${appendTargetExpressionName} muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als ${appendTargetExpressionName}`);
+    const item = stmt.expr.item;
+    const itemListExpression = new ListExpression(item.loc, item.instrLoc!, new ImplicitTypeExpression(), [item]);
+    const parsedItemListExpression = parseProofOutlineExpression(itemListExpression);
+    const parsedOriginalListExpression = parseProofOutlineExpression(appendTargetExpression);
+    const concat = App(stmt.loc, App(stmt.loc, Const(stmt.loc, intListPlusConst), parsedOriginalListExpression), parsedItemListExpression);
+    return Seq(Assign(stmt.loc, proofOutlineVariableOfTarget, concat), parseProofOutline(stmts, i + 1, false));
   } else if (stmt instanceof ExpressionStatement && stmt.expr instanceof AssignmentExpression && stmt.expr.op == '=' && stmt.expr.lhs instanceof SubscriptExpression) {
     const rhs = stmt.expr.rhs;
     const subscriptExpression = stmt.expr.lhs;
@@ -2495,7 +2562,11 @@ class Parser {
             }
           }
           this.expect(')');
-          if (e instanceof VariableExpression && e.name == 'len') {
+          if (e instanceof SelectExpression && e.selector == 'append') {
+            if (args.length != 1)
+               return this.parseError("'append' verwacht één argument");
+            e = new AppendExpression(this.dupLoc(),instrLoc, e.target, args[0]);
+          } else if (e instanceof VariableExpression && e.name == 'len') {
             if (args.length != 1)
               return this.parseError("'len' verwacht één argument");
             e = new LenExpression(this.dupLoc(), instrLoc, args[0]);
@@ -4984,7 +5055,7 @@ def method():
   errorMessage: `Deze opdracht die het list-object b muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als b`,
   locStart: 275,
   locEnd: 276
-}
+};
 const aliasViolationExampleIfLocalVariable: TestCase = {
   declarations:
 `# Wet Uitgesteld: b
@@ -5326,6 +5397,46 @@ def methode(x):
   locStart: 762,
   locEnd: 763
 };
+const aliasViolationExampleAppendMethod: TestCase = {
+  declarations:
+`# Wet Uitgesteld: b
+def method():
+    assert [1,2] == [1,2] #PRECONDITIE
+    a = [1,2]
+    assert a == [1,2]
+    assert a == a
+    b = a
+    assert b == a
+    assert a + [1] == [1,2,1] and len(b) == 2 # Uitgesteld
+    a.append(1)
+    assert a == [1,2,1] and len(b) == 2 #POSTCONDITIE
+`,
+  errorMessage: `Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a`,
+  locStart: 226,
+  locEnd: 227
+};
+const listMutationViolationExampleAppendTakesOnlyOneArgument: TestCase = {
+  declarations:
+`def method():
+    r = [1,2]
+    r.append(3,4)
+    return r
+`,
+  errorMessage: `'append' verwacht één argument`,
+  locStart: 50,
+  locEnd: 50,
+};
+const listMutationViolationExampleAppendTargetNotAList: TestCase = {
+  declarations:
+`def method():
+    a = 1
+    a.append(2)
+    return a
+`,
+  errorMessage: `Het doel van een append-uitdrukking moet een lijst zijn`,
+  locStart: 36,
+  locEnd: 37,
+};
 
 function setExample(example: Example) {
   reset();
@@ -5377,7 +5488,7 @@ async function testExamples(examples: Example[]) {
 }
 
 async function testAliasingViolationTestCase(testCase: TestCase) {
-  const {declarations, errorMessage, locStart, locEnd} = testCase
+  const {declarations, errorMessage, locStart, locEnd} = testCase;
   lawComments = [];
   let decls = parseDeclarations(mkLocFactory(declarations), declarations, processComment);
   checkDeclarations(decls);
@@ -5395,6 +5506,21 @@ async function testAliasingViolationTestCase(testCase: TestCase) {
     throw new Error("Test alias violation case failed, expected an error to be thrown");
 }
 
+async function testListMutationViolationTestCase(testCase: TestCase) {
+  const {declarations, errorMessage, locStart, locEnd} = testCase;
+  let exceptionCaught = false;
+  try {
+    let decls = parseDeclarations(mkLocFactory(declarations), declarations, processComment);
+    checkDeclarations(decls);
+  } catch (error: any) {
+    exceptionCaught = true;
+    if (error.msg != errorMessage || error.loc.start != locStart || error.loc.end != locEnd)
+      throw new Error("Test list mutation violation case failed, caught incorrect error");
+  }
+  if (!exceptionCaught)
+    throw new Error("Test list mutation violation case failed, expected an error to be thrown");
+}
+
 async function testAliasingViolationExamples() {
   await testAliasingViolationTestCase(aliasViolationExampleIfLocalVariable);
   await testAliasingViolationTestCase(aliasViolationExampleDoubleIfs);
@@ -5405,7 +5531,14 @@ async function testAliasingViolationExamples() {
   await testAliasingViolationTestCase(aliasViolationExampleDoubleWhileLusMultipleLoopings);
   await testAliasingViolationTestCase(aliasViolationExampleSingleWhileLusMultipleLoopings);
   await testAliasingViolationTestCase(aliasViolationExampleSameVariableAssigment);
+  await testAliasingViolationTestCase(aliasViolationExampleAppendMethod);
   console.log("All alias violation error tests passed!");
+}
+
+async function testListMutationViolationExamples() {
+  await testListMutationViolationTestCase(listMutationViolationExampleAppendTakesOnlyOneArgument);
+  await testListMutationViolationTestCase(listMutationViolationExampleAppendTargetNotAList);
+  console.log("All list mutations violation error tests passed");
 }
 
 declare var secretExamples: Example[]|undefined;
@@ -5832,7 +5965,55 @@ def methode():
 `,
 statements: ``,
 expression: ``
-},
+}, {
+  title: 'Simple append-method to list variable',
+  declarations: 
+`# Wet Uitgesteld: b
+def method():
+   assert [1,2] == [1,2] #PRECONDITIE
+   a = [1,2]
+   assert   a == [1,2]
+   assert a + [1] == [1,2,1] # Uitgesteld
+   a.append(1)
+   assert a == [1,2,1] #POSTCONDITIE
+`,
+statements: ``,
+expression: ``
+}, {
+  title: 'Simple append-method to list variable with other variable in precondition which is not a possible alias',
+  declarations: 
+`# Wet Uitgesteld: b
+def method():
+   assert [1,2] == [1,2] #PRECONDITIE
+   a = [1,2]
+   assert a == [1,2]
+   assert [2,3] == [2,3]
+   b = [2,3]
+   assert b == [2,3]
+   assert a + [1] == [1,2,1] and len(b) == 2 # Uitgesteld       
+   a.append(1)
+   assert a == [1,2,1] and len(b) == 2 #POSTCONDITIE
+`,
+statements: ``,
+expression: ``
+}, {
+  title: 'Repeat-method to retrieve list of n times x',
+  declarations: 
+`def repeat(n,x):
+  i = 0
+  list = []
+  while i < n:
+    list.append(x)
+    i = i + 1
+  return list
+`,
+statements: 
+`assert repeat(0,1) == []
+assert repeat(1,5) == [5]
+assert repeat(4,3) == [3,3,3,3]
+`,
+expression: `repeat(5,1)`
+}
 ];
 
 async function testPyLearner() {
@@ -5846,6 +6027,7 @@ async function testPyLearner() {
   }
   runUnitTests();
   await testAliasingViolationExamples();
+  await testListMutationViolationExamples();
 }
 
 if (typeof window === 'undefined') // We're being executed by Node.js.

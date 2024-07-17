@@ -919,8 +919,8 @@ class ListObject extends JavaObject {
     return result;
   }
   add(item: Value) {
-    let newField = this.length.toString();
-    this.fields[newField] = new FieldBinding(item);
+    let newFieldIndex = this.length.toString();
+    this.fields[newFieldIndex] = new FieldBinding(item);
     if (typeof document !== 'undefined')
       this.domNode = AddNewFieldToListHeapObjectDOMNode(this);
     this.length++
@@ -1069,8 +1069,8 @@ class AppendExpression extends Expression {
     let [target, item] = pop(2);
     if (!(target instanceof ListObject))
       this.executionError(target + " is geen lijst");
-    let adaptedListObject = target.add(item);
-    this.push(adaptedListObject);
+    target.add(item);
+    this.push("void");
   }
 }
 
@@ -5409,10 +5409,32 @@ def method():
     assert a + [1] == [1,2,1] and len(b) == 2 # Uitgesteld
     a.append(1)
     assert a == [1,2,1] and len(b) == 2 #POSTCONDITIE
-  `,
+`,
   errorMessage: `Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a`,
   locStart: 226,
   locEnd: 227
+};
+const listMutationViolationExampleAppendTakesOnlyOneArgument: TestCase = {
+  declarations:
+`def method():
+    r = [1,2]
+    r.append(3,4)
+    return r
+`,
+  errorMessage: `'append' verwacht één argument`,
+  locStart: 50,
+  locEnd: 50,
+};
+const listMutationViolationExampleAppendTargetNotAList: TestCase = {
+  declarations:
+`def method():
+    a = 1
+    a.append(2)
+    return a
+`,
+  errorMessage: `Het doel van een append-uitdrukking moet een lijst zijn`,
+  locStart: 36,
+  locEnd: 37,
 };
 
 function setExample(example: Example) {
@@ -5465,7 +5487,7 @@ async function testExamples(examples: Example[]) {
 }
 
 async function testAliasingViolationTestCase(testCase: TestCase) {
-  const {declarations, errorMessage, locStart, locEnd} = testCase
+  const {declarations, errorMessage, locStart, locEnd} = testCase;
   lawComments = [];
   let decls = parseDeclarations(mkLocFactory(declarations), declarations, processComment);
   checkDeclarations(decls);
@@ -5483,6 +5505,21 @@ async function testAliasingViolationTestCase(testCase: TestCase) {
     throw new Error("Test alias violation case failed, expected an error to be thrown");
 }
 
+async function testListMutationViolationTestCase(testCase: TestCase) {
+  const {declarations, errorMessage, locStart, locEnd} = testCase;
+  let exceptionCaught = false;
+  try {
+    let decls = parseDeclarations(mkLocFactory(declarations), declarations, processComment);
+    checkDeclarations(decls);
+  } catch (error: any) {
+    exceptionCaught = true;
+    if (error.msg != errorMessage || error.loc.start != locStart || error.loc.end != locEnd)
+      throw new Error("Test list mutation violation case failed, caught incorrect error");
+  }
+  if (!exceptionCaught)
+    throw new Error("Test list mutation violation case failed, expected an error to be thrown");
+}
+
 async function testAliasingViolationExamples() {
   await testAliasingViolationTestCase(aliasViolationExampleIfLocalVariable);
   await testAliasingViolationTestCase(aliasViolationExampleDoubleIfs);
@@ -5495,6 +5532,12 @@ async function testAliasingViolationExamples() {
   await testAliasingViolationTestCase(aliasViolationExampleSameVariableAssigment);
   await testAliasingViolationTestCase(aliasViolationExampleAppendMethod);
   console.log("All alias violation error tests passed!");
+}
+
+async function testListMutationViolationExamples() {
+  await testListMutationViolationTestCase(listMutationViolationExampleAppendTakesOnlyOneArgument);
+  await testListMutationViolationTestCase(listMutationViolationExampleAppendTargetNotAList);
+  console.log("All list mutations violation error tests passed");
 }
 
 declare var secretExamples: Example[]|undefined;
@@ -5983,6 +6026,7 @@ async function testPyLearner() {
   }
   runUnitTests();
   await testAliasingViolationExamples();
+  await testListMutationViolationExamples();
 }
 
 if (typeof window === 'undefined') // We're being executed by Node.js.

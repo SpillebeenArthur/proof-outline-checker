@@ -792,19 +792,23 @@ function createHeapObjectDOMNode(object: JavaObject) {
   return node;
 }
 
-function AddNewFieldToListHeapObjectDOMNode(object: ListObject) {
-  let fieldIndex = object.length.toString();
-  let fieldRow = document.createElement('tr');
-  object.domNode.appendChild(fieldRow);
-  let nameCell = document.createElement('td');
-  fieldRow.appendChild(nameCell);
-  nameCell.className = 'field-name';
-  nameCell.innerText = fieldIndex;
-  let valueCell = document.createElement('td');
-  fieldRow.appendChild(valueCell);
-  valueCell.className = 'field-value';
-  valueCell.innerText = object.fields[fieldIndex].value;
-  object.fields[fieldIndex].valueCell = valueCell;
+function updateListHeapObjectDOMNode(object: ListObject) {
+  while (object.domNode.lastChild && object.domNode.lastChild.firstChild.className != 'object-title-td') {
+    object.domNode.removeChild(object.domNode.lastChild);
+  }
+  for (let field in object.fields) {
+    let fieldRow = document.createElement('tr');
+    object.domNode.appendChild(fieldRow);
+    let nameCell = document.createElement('td');
+    fieldRow.appendChild(nameCell);
+    nameCell.className = 'field-name';
+    nameCell.innerText = field;
+    let valueCell = document.createElement('td');
+    fieldRow.appendChild(valueCell);
+    valueCell.className = 'field-value';
+    valueCell.innerText = object.fields[field].value;
+    object.fields[field].valueCell = valueCell;
+  }
   return object.domNode;
 }
 
@@ -919,11 +923,47 @@ class ListObject extends JavaObject {
     return result;
   }
   add(item: Value) {
-    let newFieldIndex = this.length.toString();
-    this.fields[newFieldIndex] = new FieldBinding(item);
+    return this.insert(this.length,item);
+  }
+  pop(index: number) {
+    const absIndex = index >= 0 ? index : index + this.length;
+    let fields: {[index: string]: FieldBinding} = {};
+    for (let i = 0; i < absIndex; i++)
+      fields[i] = this.fields[i];
+    for (let i = absIndex; i < this.length-1; i++)
+      fields[i] = this.fields[i+1];
+    this.fields = fields;
     if (typeof document !== 'undefined')
-      this.domNode = AddNewFieldToListHeapObjectDOMNode(this);
-    this.length++
+      this.domNode = updateListHeapObjectDOMNode(this);
+    this.length--;
+    return this;
+    
+  }
+  insert(index: number, item: Value) {
+    const absIndex = index >= 0 ? index : index + this.length;
+    const resultIndex = absIndex > this.length ? this.length : absIndex;
+    for (let i = this.length; i != resultIndex; i--)
+      this.fields[i] = this.fields[i-1];
+    this.fields[resultIndex] = new FieldBinding(item);
+    if (typeof document !== 'undefined')
+      this.domNode = updateListHeapObjectDOMNode(this);
+    this.length++;
+    return this;
+  }
+  clear() {
+    this.fields = {};
+    if (typeof document !== 'undefined')
+      this.domNode = updateListHeapObjectDOMNode(this);
+    this.length = 0;
+    return this;
+  }
+  extend(iterable: ListObject) {
+    const newLength = this.length + iterable.length;
+    for (let i = 0; i < iterable.length; i++)
+      this.fields[i+this.length] = new FieldBinding(iterable.fields[i].value);
+    if (typeof document !== 'undefined')
+      this.domNode = updateListHeapObjectDOMNode(this);
+    this.length = newLength;
     return this;
   }
   plus(other: ListObject) {
@@ -1071,6 +1111,108 @@ class AppendExpression extends Expression {
     if (!(target instanceof ListObject))
       this.executionError(target + " is geen lijst");
     target.add(item);
+    this.push("void");
+  }
+}
+class ClearExpression extends Expression {
+  constructor(loc: Loc, instrLoc: Loc, public target: Expression) {
+    super(loc, instrLoc);
+  }
+
+  check(env: Scope) {
+    let targetType = this.target.check_(env);
+    if (!(targetType.isListType()))
+      this.executionError("Het doel van een clear-uitdrukking moet een lijst zijn");
+    return voidType;
+  }
+
+  async evaluate(env: Scope) {
+    await this.target.evaluate(env);
+    await this.breakpoint();
+    let [target] = pop(1);
+    if (!(target instanceof ListObject))
+      this.executionError(target + " is geen lijst");
+    target.clear();
+    this.push("void");
+  }
+}
+class ExtendExpression extends Expression {
+  constructor(loc: Loc, instrLoc: Loc, public target: Expression, public iterable: Expression) {
+    super(loc, instrLoc);
+  }
+
+  check(env: Scope) {
+    let targetType = this.target.check_(env);
+    if (!(targetType.isListType()))
+      this.executionError("Het doel van een extend-uitdrukking moet een lijst zijn");
+    let iterableType = this.iterable.check_(env);
+    if (!(iterableType.isListType()))
+      this.executionError("Het argument van een extend-uitdrukking moet een lijst zijn");
+    return voidType;
+  }
+
+  async evaluate(env: Scope) {
+    await this.target.evaluate(env);
+    await this.iterable.evaluate(env);
+    await this.breakpoint();
+    let [target, iterable] = pop(2);
+    if (!(target instanceof ListObject))
+      this.executionError(target + " is geen lijst");
+    if (!(iterable instanceof ListObject))
+      this.executionError(target + " is geen lijst");
+    target.extend(iterable);
+    this.push("void");
+  }
+}
+
+class InsertExpression extends Expression {
+  constructor(loc: Loc, instrLoc: Loc, public target: Expression, public index: Expression, public item: Expression) {
+    super(loc, instrLoc);
+  }
+
+  check(env: Scope) {
+    let targetType = this.target.check_(env);
+    if (!(targetType.isListType()))
+      this.executionError("Het doel van een insert-uitdrukking moet een lijst zijn");
+    this.index.checkAgainst(env, intType);
+    this.item.checkAgainst(env, intType);
+    return voidType;
+  }
+
+  async evaluate(env: Scope) {
+    await this.target.evaluate(env);
+    await this.index.evaluate(env);
+    await this.item.evaluate(env);
+    await this.breakpoint();
+    let [target, index, item] = pop(3);
+    if (!(target instanceof ListObject))
+      this.executionError(target + " is geen lijst");
+    target.insert(index, item);
+    this.push("void");
+  }
+}
+
+class PopExpression extends Expression {
+  constructor(loc: Loc, instrLoc: Loc, public target: Expression, public index: Expression) {
+    super(loc, instrLoc);
+  }
+
+  check(env: Scope) {
+    let targetType = this.target.check_(env);
+    if (!(targetType.isListType()))
+      this.executionError("Het doel van een pop-uitdrukking moet een lijst zijn");
+    this.index.checkAgainst(env, intType);
+    return (targetType.unwrapInferredType() as ListType).elementType;
+  }
+
+  async evaluate(env: Scope) {
+    await this.target.evaluate(env);
+    await this.index.evaluate(env);
+    await this.breakpoint();
+    let [target, index] = pop(2);
+    if (!(target instanceof ListObject))
+      this.executionError(target + " is geen lijst");
+    target.pop(index);
     this.push("void");
   }
 }
@@ -2159,6 +2301,97 @@ function parseProofOutline(stmts: Statement[], i: number, precededByAssert: bool
     const parsedOriginalListExpression = parseProofOutlineExpression(appendTargetExpression);
     const concat = App(stmt.loc, App(stmt.loc, Const(stmt.loc, intListPlusConst), parsedOriginalListExpression), parsedItemListExpression);
     return Seq(Assign(stmt.loc, proofOutlineVariableOfTarget, concat), parseProofOutline(stmts, i + 1, false));
+  } else if (stmt instanceof ExpressionStatement && stmt.expr instanceof ClearExpression) {
+    const clearTargetExpression = stmt.expr.target;
+    if (!(clearTargetExpression instanceof VariableExpression))
+      return stmt.executionError(`clear-methodes aan dit type worden nog niet ondersteund.`);
+    const proofOutlineVariableOfTarget = clearTargetExpression.getProofOutlineVariable(() => {
+      return stmt.executionError(`clear-methodes aan variabelen van het type ${stmt.expr.type} worden nog niet ondersteund.`);
+    });
+    const previousStatement = stmts[i-1];
+    const clearTargetExpressionName = clearTargetExpression.name;
+    if (!(previousStatement instanceof AssertStatement))
+      return stmt.executionError(`Opdracht moet worden voorafgegaan door een assert statement`);
+    if (preconditionHasMayAlias(previousStatement.condition, clearTargetExpressionName, stmt.mayAliasRelation!))
+      return stmt.expr.executionError(`Deze opdracht die het list-object ${clearTargetExpressionName} muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als ${clearTargetExpressionName}`);
+    const ClearedListExpression = new ListExpression(clearTargetExpression.loc, clearTargetExpression.instrLoc!, new ImplicitTypeExpression(), []);
+    const parsedClearedListExpression = parseProofOutlineExpression(ClearedListExpression);
+    return Seq(Assign(stmt.loc, proofOutlineVariableOfTarget, parsedClearedListExpression), parseProofOutline(stmts, i + 1, false));
+  } else if (stmt instanceof ExpressionStatement && stmt.expr instanceof ExtendExpression) {
+    const extendTargetExpression = stmt.expr.target;
+    if (!(extendTargetExpression instanceof VariableExpression))
+      return stmt.executionError(`extend-methodes aan dit type worden nog niet ondersteund.`);
+    const proofOutlineVariableOfTarget = extendTargetExpression.getProofOutlineVariable(() => {
+      return stmt.executionError(`extend-methodes aan variabelen van het type ${stmt.expr.type} worden nog niet ondersteund.`);
+    });
+    const previousStatement = stmts[i-1];
+    const extendTargetExpressionName = extendTargetExpression.name;
+    if (!(previousStatement instanceof AssertStatement))
+      return stmt.executionError(`Opdracht moet worden voorafgegaan door een assert statement`);
+    if (preconditionHasMayAlias(previousStatement.condition, extendTargetExpressionName, stmt.mayAliasRelation!))
+      return stmt.expr.executionError(`Deze opdracht die het list-object ${extendTargetExpressionName} muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als ${extendTargetExpressionName}`);
+    const parsedIterableExpression = parseProofOutlineExpression(stmt.expr.iterable);
+    const parsedOriginalListExpression = parseProofOutlineExpression(extendTargetExpression);
+    const concat = App(stmt.loc, App(stmt.loc, Const(stmt.loc, intListPlusConst), parsedOriginalListExpression), parsedIterableExpression);
+    return Seq(Assign(stmt.loc, proofOutlineVariableOfTarget, concat), parseProofOutline(stmts, i + 1, false));
+  } else if (stmt instanceof ExpressionStatement && stmt.expr instanceof InsertExpression) {
+    const insertTargetExpression = stmt.expr.target;
+    if (!(insertTargetExpression instanceof VariableExpression))
+      return stmt.executionError(`insert-methodes aan dit type worden nog niet ondersteund.`);
+    const proofOutlineVariableOfTarget = insertTargetExpression.getProofOutlineVariable(() => {
+      return stmt.executionError(`insert-methodes aan variabelen van het type ${stmt.expr.type} worden nog niet ondersteund.`);
+    });
+    const previousStatement = stmts[i-1];
+    const insertTargetExpressionName = insertTargetExpression.name;
+    if (!(previousStatement instanceof AssertStatement))
+      return stmt.executionError(`Opdracht moet worden voorafgegaan door een assert statement`);
+    if (preconditionHasMayAlias(previousStatement.condition, insertTargetExpressionName, stmt.mayAliasRelation!))
+      return stmt.expr.executionError(`Deze opdracht die het list-object ${insertTargetExpressionName} muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als ${insertTargetExpressionName}`);
+    let zeroIntLiteral = new IntLiteral(stmt.loc, 0);
+    zeroIntLiteral.type = intType;
+    const preIndexSliceExpression = new SliceExpression(stmt.expr.loc, stmt.expr.instrLoc!, insertTargetExpression, zeroIntLiteral, stmt.expr.index);
+    const listExpression = new ListExpression(stmt.expr.loc, stmt.expr.index.instrLoc!, new ImplicitTypeExpression(), [stmt.expr.item]);
+    const lenTarget = new LenExpression(stmt.expr.loc, stmt.expr.instrLoc!, insertTargetExpression);
+    lenTarget.type = intType;
+    const postIndexSliceExpression = new SliceExpression(stmt.expr.loc, stmt.expr.instrLoc!, insertTargetExpression, stmt.expr.index, lenTarget);
+    const parsedPreIndexSliceExpression = parseProofOutlineExpression(preIndexSliceExpression);
+    const parsedListExpression = parseProofOutlineExpression(listExpression);
+    const parsedPostIndexSliceExpression = parseProofOutlineExpression(postIndexSliceExpression);
+    const leftConcat = App(stmt.expr.loc, App(stmt.expr.loc, Const(stmt.expr.loc, intListPlusConst), parsedPreIndexSliceExpression), parsedListExpression);
+    const concat = App(stmt.expr.loc, App(stmt.expr.loc, Const(stmt.expr.loc, intListPlusConst), leftConcat), parsedPostIndexSliceExpression);
+    return Seq(Assign(stmt.loc, proofOutlineVariableOfTarget, concat), parseProofOutline(stmts, i + 1, false));
+  } else if (stmt instanceof ExpressionStatement && stmt.expr instanceof PopExpression) {
+    const popTargetExpression = stmt.expr.target;
+    const popExpressionTargetType = popTargetExpression.type;
+    if (!(popTargetExpression instanceof VariableExpression))
+      return stmt.executionError(`pop-methodes aan dit type worden nog niet ondersteund.`);
+    const proofOutlineVariableOfTarget = popTargetExpression.getProofOutlineVariable(() => {
+      return stmt.executionError(`pop-methodes aan variabelen van het type ${stmt.expr.type} worden nog niet ondersteund.`);
+    });
+    const previousStatement = stmts[i-1];
+    const popTargetExpressionName = popTargetExpression.name;
+    if (!(previousStatement instanceof AssertStatement))
+      return stmt.executionError(`Opdracht moet worden voorafgegaan door een assert statement`);
+    if (preconditionHasMayAlias(previousStatement.condition, popTargetExpressionName, stmt.mayAliasRelation!))
+      return stmt.expr.executionError(`Deze opdracht die het list-object ${popTargetExpressionName} muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als ${popTargetExpressionName}`);
+    let zeroIntLiteral = new IntLiteral(stmt.loc, 0);
+    zeroIntLiteral.type = intType;
+    const preIndexSliceExpression = new SliceExpression(stmt.expr.loc, stmt.expr.instrLoc!, popTargetExpression, zeroIntLiteral, stmt.expr.index);
+    preIndexSliceExpression.type = popExpressionTargetType;
+    const lenTarget = new LenExpression(stmt.expr.loc, stmt.expr.instrLoc!, popTargetExpression);
+    lenTarget.type = intType;
+    const postIndexSliceExpression = new SliceExpression(stmt.expr.loc, stmt.expr.instrLoc!, popTargetExpression, stmt.expr.index, lenTarget);
+    postIndexSliceExpression.type = popExpressionTargetType;
+    const lenSlicedExpression = new LenExpression(stmt.expr.loc, stmt.expr.instrLoc!, postIndexSliceExpression);
+    lenSlicedExpression.type = intType;
+    let oneIntLiteral = new IntLiteral(stmt.loc, 1);
+    oneIntLiteral.type = intType;
+    const postIndexSliceExpressionFirstElementExcluded = new SliceExpression(stmt.expr.loc, stmt.expr.instrLoc!, postIndexSliceExpression, oneIntLiteral, lenSlicedExpression);
+    postIndexSliceExpressionFirstElementExcluded.type = popExpressionTargetType;
+    const parsedPreIndexSliceExpression = parseProofOutlineExpression(preIndexSliceExpression);
+    const parsedPostIndexSliceExpression = parseProofOutlineExpression(postIndexSliceExpressionFirstElementExcluded);
+    const concat = App(stmt.expr.loc, App(stmt.expr.loc, Const(stmt.expr.loc, intListPlusConst), parsedPreIndexSliceExpression), parsedPostIndexSliceExpression);
+    return Seq(Assign(stmt.loc, proofOutlineVariableOfTarget, concat), parseProofOutline(stmts, i + 1, false));
   } else if (stmt instanceof ExpressionStatement && stmt.expr instanceof AssignmentExpression && stmt.expr.op == '=' && stmt.expr.lhs instanceof SubscriptExpression) {
     const rhs = stmt.expr.rhs;
     const subscriptExpression = stmt.expr.lhs;
@@ -2566,6 +2799,26 @@ class Parser {
             if (args.length != 1)
                return this.parseError("'append' verwacht één argument");
             e = new AppendExpression(this.dupLoc(),instrLoc, e.target, args[0]);
+          } else if (e instanceof SelectExpression && e.selector == 'clear') {
+            if (args.length != 0)
+                return this.parseError("'clear' verwacht geen argumenten");
+            e = new ClearExpression(this.dupLoc(),instrLoc, e.target);
+          } else if (e instanceof SelectExpression && e.selector == 'extend') {
+            if (args.length != 1)
+                return this.parseError("'extend' verwacht één argumenten");
+            e = new ExtendExpression(this.dupLoc(),instrLoc, e.target, args[0]);
+          } else if (e instanceof SelectExpression && e.selector == 'insert') {
+            if (args.length != 2)
+                return this.parseError("'insert' verwacht twee argumenten");
+            e = new InsertExpression(this.dupLoc(),instrLoc, e.target, args[0], args[1]);
+          } else if (e instanceof SelectExpression && e.selector == 'pop') {
+            if (args.length == 0)
+              e = new PopExpression(this.dupLoc(),instrLoc, e.target, new IntLiteral(instrLoc,-1,true));
+            else if (args.length == 1)
+              e = new PopExpression(this.dupLoc(),instrLoc, e.target, args[0]);
+            else {
+              return this.parseError("'pop' verwacht 1 of geen argumenten");
+            }
           } else if (e instanceof VariableExpression && e.name == 'len') {
             if (args.length != 1)
               return this.parseError("'len' verwacht één argument");
@@ -6013,6 +6266,207 @@ assert repeat(1,5) == [5]
 assert repeat(4,3) == [3,3,3,3]
 `,
 expression: `repeat(5,1)`
+}, {
+  title: 'Simple clear-method to list variable',
+  declarations: 
+`# Wet Uitgesteld: b
+def method():
+   assert [1,2] == [1,2] #PRECONDITIE
+   a = [1,2]
+   assert a == [1,2]
+   assert [] == [] 
+   a.clear() # Uitgesteld
+   assert a == [] # POSTCONDITIE
+   return a
+`,
+statements: `assert method() == []`,
+expression: ``
+}, {
+  title: 'Simple clear-method to list variable with other variable in precondition which is not a possible alias',
+  declarations: 
+`# Wet Uitgesteld: b
+def method():
+   assert [1,2] == [1,2] #PRECONDITIE
+   a = [1,2]
+   assert a == [1,2]
+   assert [2,1] == [2,1]
+   b = [2,1]
+   assert b == [2,1]
+   assert [] == [] and len(b) == 2 # Uitgesteld
+   a.clear() # Uitgesteld
+   assert a == [] and len(b) == 2 # POSTCONDITIE
+   return a
+`,
+statements: `assert method() == []`,
+expression: ``
+}, {
+  title: 'Simple extend-method to list variable with other list variable',
+  declarations: 
+`# Wet Uitgesteld: b
+def method():
+   assert [1,2] == [1,2] #PRECONDITIE
+   a = [1,2]
+   assert a == [1,2]
+   assert [2,25] == [2,25] # Uitgesteld
+   b = [2,25]
+   assert b == [2,25]
+   assert a + b == [1,2,2,25] # Uitgesteld
+   a.extend(b)
+   assert a == [1,2,2,25] # POSTCONDITIE
+   return a
+`,
+statements: `assert method() == [1,2,2,25]`,
+expression: ``
+}, {
+  title: 'Simple extend-method to list variable with other list',
+  declarations: 
+`# Wet Uitgesteld: b
+def method():
+   assert [1,2] == [1,2] #PRECONDITIE
+   a = [1,2]
+   assert a == [1,2]
+   assert a + [4] == [1,2,4] # Uitgesteld
+   a.extend([4])
+   assert a == [1,2,4] # POSTCONDITIE
+   return a
+`,
+statements: `assert method() == [1,2,4]`,
+expression: ``
+}, {
+  title: 'Simple extend-method to list variable with other list with other variable in precondition which is not a possible alias',
+  declarations: 
+`# Wet Uitgesteld: b
+def method():
+   assert [1,2] == [1,2] #PRECONDITIE
+   a = [1,2]
+   assert a == [1,2]
+   assert a == a # Uitgesteld
+   b = a
+   assert b == a
+   assert [0] == [0] # Uitgesteld
+   c = [0]
+   assert c == [0]
+   assert a + c == [1,2,0] # Uitgesteld
+   a.extend(c)
+   assert a == [1,2,0] # POSTCONDITIE
+   return a
+`,
+statements: `assert method() == [1,2,0]`,
+expression: ``
+}, {
+  title: 'Simple insert-method to list variable of item at positive index',
+  declarations: 
+`# Wet Uitgesteld: b
+def method():
+   assert [1,2] == [1,2] #PRECONDITIE
+   a = [1,2]
+   assert a == [1,2]
+   assert a[:0] + [5] + a[0:] == [5,1,2] # Uitgesteld
+   a.insert(0,5)
+   assert a == [5,1,2] # POSTCONDITIE
+   return a
+`,
+statements: `assert method() == [5,1,2]`,
+expression: ``
+}, {
+  title: 'Simple insert-method to list variable of item at negative index',
+  declarations: 
+`# Wet Uitgesteld: b
+def method():
+   assert [1,2] == [1,2] #PRECONDITIE
+   a = [1,2]
+   assert a == [1,2]
+   assert a[:-1] + [5] + a[-1:] == [1,5,2] # Uitgesteld
+   a.insert(-1,5)
+   assert a == [1,5,2] # POSTCONDITIE
+   return a
+`,
+statements: `assert method() == [1,5,2]`,
+expression: ``
+}, {
+  title: 'Simple insert-method to list variable of item at index higher than length of list',
+  declarations: 
+`# Wet Uitgesteld: b
+def method():
+   assert [1,2] == [1,2] #PRECONDITIE
+   a = [1,2]
+   assert a == [1,2]
+   assert a[:3] + [5] + a[3:] == [1,2,5] # Uitgesteld
+   a.insert(3,5)
+   assert a == [1,2,5] # POSTCONDITIE
+   return a
+`,
+statements: `assert method() == [1,2,5]`,
+expression: ``
+}, {
+  title: 'Simple insert-method to list variable of item at index higher than length of list with other variable in precondition which is not a possible alias',
+  declarations: 
+`# Wet Uitgesteld: b
+def method():
+   assert [1,2] == [1,2] #PRECONDITIE
+   a = [1,2]
+   assert a == [1,2]
+   assert [5] == [5]
+   b = [5]
+   assert b == [5]
+   assert a[:3] + [5] + a[3:] == [1,2,5] and len(b) == 1 # Uitgesteld
+   a.insert(3,5)
+   assert a == [1,2,5] and len(b) == 1 # POSTCONDITIE
+   return a
+`,
+statements: `assert method() == [1,2,5]`,
+expression: ``
+}, {
+  title: 'Simple pop-method to list variable of item at index -1',
+  declarations: 
+`# Wet Uitgesteld: b
+def method():
+   assert [1,2,3,4,5] == [1,2,3,4,5] #PRECONDITIE
+   a = [1,2,3,4,5]
+   assert a == [1,2,3,4,5]
+   assert a[:-1] + a[-1:][1:] == [1,2,3,4] # Uitgesteld
+   a.pop(-1)
+   assert a == [1,2,3,4] # POSTCONDITIE
+   return a
+`,
+statements: `assert method() == [1,2,3,4]`,
+expression: ``
+}, {
+  title: 'Simple pop-method to list variable of item at index 0',
+  declarations: 
+`# Wet Uitgesteld: b
+def method():
+   assert [1,2,3,4,5] == [1,2,3,4,5] #PRECONDITIE
+   a = [1,2,3,4,5]
+   assert a == [1,2,3,4,5]
+   assert 0 == 0 # Uitgesteld
+   b = 0
+   assert b == 0
+   assert a[:0] + a[0:][1:] == [2,3,4,5] # Uitgesteld
+   a.pop(0)
+   assert a == [2,3,4,5] # POSTCONDITIE
+   return a
+`,
+statements: `assert method() == [2,3,4,5]`,
+expression: ``
+}, {
+  title: 'Simple pop-method to list variable of item at index 0 represented by variable, with other variable in precondition which is not a possible alias',
+  declarations: 
+`# Wet Uitgesteld: b
+def method():
+   assert [1,2,3,4,5] == [1,2,3,4,5] #PRECONDITIE
+   a = [1,2,3,4,5]
+   assert a == [1,2,3,4,5]
+   assert 0 == 0 # Uitgesteld
+   b = 0
+   assert b == 0
+   assert a[:b] + a[b:][1:] == [2,3,4,5] and b == 0 # Uitgesteld
+   a.pop(b)
+   assert a == [2,3,4,5] and b == 0 # POSTCONDITIE
+   return a
+`,
+statements: `assert method() == [2,3,4,5]`,
+expression: ``
 }
 ];
 

@@ -926,6 +926,8 @@ class ListObject extends JavaObject {
     return this.insert(this.length,item);
   }
   pop(index: number) {
+    if(index >= this.length)
+      throw new Error("index out of range for pop method.");
     const absIndex = index >= 0 ? index : index + this.length;
     let fields: {[index: string]: FieldBinding} = {};
     for (let i = 0; i < absIndex; i++)
@@ -941,7 +943,11 @@ class ListObject extends JavaObject {
   }
   insert(index: number, item: Value) {
     const absIndex = index >= 0 ? index : index + this.length;
-    const resultIndex = absIndex > this.length ? this.length : absIndex;
+    let resultIndex = absIndex;
+    if(absIndex < 0)
+      resultIndex = 0;
+    else if(absIndex > this.length) 
+      resultIndex = this.length;
     for (let i = this.length; i != resultIndex; i--)
       this.fields[i] = this.fields[i-1];
     this.fields[resultIndex] = new FieldBinding(item);
@@ -1202,7 +1208,7 @@ class PopExpression extends Expression {
     if (!(targetType.isListType()))
       this.executionError("Het doel van een pop-uitdrukking moet een lijst zijn");
     this.index.checkAgainst(env, intType);
-    return (targetType.unwrapInferredType() as ListType).elementType;
+    return voidType; // TODO: Add support for simultaneous assignment and `pop` return values
   }
 
   async evaluate(env: Scope) {
@@ -2805,7 +2811,7 @@ class Parser {
             e = new ClearExpression(this.dupLoc(),instrLoc, e.target);
           } else if (e instanceof SelectExpression && e.selector == 'extend') {
             if (args.length != 1)
-                return this.parseError("'extend' verwacht één argumenten");
+                return this.parseError("'extend' verwacht één argument");
             e = new ExtendExpression(this.dupLoc(),instrLoc, e.target, args[0]);
           } else if (e instanceof SelectExpression && e.selector == 'insert') {
             if (args.length != 2)
@@ -2817,7 +2823,7 @@ class Parser {
             else if (args.length == 1)
               e = new PopExpression(this.dupLoc(),instrLoc, e.target, args[0]);
             else {
-              return this.parseError("'pop' verwacht 1 of geen argumenten");
+              return this.parseError("'pop' verwacht één of geen argumenten");
             }
           } else if (e instanceof VariableExpression && e.name == 'len') {
             if (args.length != 1)
@@ -6101,8 +6107,8 @@ def methode():
         assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
     assert i <= n and not i < n #POSTCONDITIE
 `,
-statements: ``,
-expression: ``
+  statements: ``,
+  expression: ``
 }, {
   title: 'Aliasing with double while loop',
   declarations:
@@ -6216,8 +6222,8 @@ def methode():
         assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
     assert i <= n and not i < n #POSTCONDITIE
 `,
-statements: ``,
-expression: ``
+  statements: ``,
+  expression: ``
 }, {
   title: 'Simple append-method to list variable',
   declarations: 
@@ -6230,8 +6236,8 @@ def method():
    a.append(1)
    assert a == [1,2,1] #POSTCONDITIE
 `,
-statements: ``,
-expression: ``
+  statements: ``,
+  expression: ``
 }, {
   title: 'Simple append-method to list variable with other variable in precondition which is not a possible alias',
   declarations: 
@@ -6247,8 +6253,8 @@ def method():
    a.append(1)
    assert a == [1,2,1] and len(b) == 2 #POSTCONDITIE
 `,
-statements: ``,
-expression: ``
+  statements: ``,
+  expression: ``
 }, {
   title: 'Repeat-method to retrieve list of n times x',
   declarations: 
@@ -6260,12 +6266,12 @@ expression: ``
     i = i + 1
   return list
 `,
-statements: 
+  statements: 
 `assert repeat(0,1) == []
 assert repeat(1,5) == [5]
 assert repeat(4,3) == [3,3,3,3]
 `,
-expression: `repeat(5,1)`
+  expression: `repeat(5,1)`
 }, {
   title: 'Simple clear-method to list variable',
   declarations: 
@@ -6279,8 +6285,8 @@ def method():
    assert a == [] # POSTCONDITIE
    return a
 `,
-statements: `assert method() == []`,
-expression: ``
+  statements: `assert method() == []`,
+  expression: ``
 }, {
   title: 'Simple clear-method to list variable with other variable in precondition which is not a possible alias',
   declarations: 
@@ -6297,8 +6303,8 @@ def method():
    assert a == [] and len(b) == 2 # POSTCONDITIE
    return a
 `,
-statements: `assert method() == []`,
-expression: ``
+  statements: `assert method() == []`,
+  expression: ``
 }, {
   title: 'Simple extend-method to list variable with other list variable',
   declarations: 
@@ -6315,8 +6321,8 @@ def method():
    assert a == [1,2,2,25] # POSTCONDITIE
    return a
 `,
-statements: `assert method() == [1,2,2,25]`,
-expression: ``
+  statements: `assert method() == [1,2,2,25]`,
+  expression: ``
 }, {
   title: 'Simple extend-method to list variable with other list',
   declarations: 
@@ -6330,8 +6336,8 @@ def method():
    assert a == [1,2,4] # POSTCONDITIE
    return a
 `,
-statements: `assert method() == [1,2,4]`,
-expression: ``
+  statements: `assert method() == [1,2,4]`,
+  expression: ``
 }, {
   title: 'Simple extend-method to list variable with other list with other variable in precondition which is not a possible alias',
   declarations: 
@@ -6351,8 +6357,8 @@ def method():
    assert a == [1,2,0] # POSTCONDITIE
    return a
 `,
-statements: `assert method() == [1,2,0]`,
-expression: ``
+  statements: `assert method() == [1,2,0]`,
+  expression: ``
 }, {
   title: 'Simple insert-method to list variable of item at positive index',
   declarations: 
@@ -6366,8 +6372,8 @@ def method():
    assert a == [5,1,2] # POSTCONDITIE
    return a
 `,
-statements: `assert method() == [5,1,2]`,
-expression: ``
+  statements: `assert method() == [5,1,2]`,
+  expression: ``
 }, {
   title: 'Simple insert-method to list variable of item at negative index',
   declarations: 
@@ -6381,8 +6387,8 @@ def method():
    assert a == [1,5,2] # POSTCONDITIE
    return a
 `,
-statements: `assert method() == [1,5,2]`,
-expression: ``
+  statements: `assert method() == [1,5,2]`,
+  expression: ``
 }, {
   title: 'Simple insert-method to list variable of item at index higher than length of list',
   declarations: 
@@ -6396,8 +6402,23 @@ def method():
    assert a == [1,2,5] # POSTCONDITIE
    return a
 `,
-statements: `assert method() == [1,2,5]`,
-expression: ``
+  statements: `assert method() == [1,2,5]`,
+  expression: ``
+}, {
+  title: 'Simple insert-method to list variable of item at negative index, higher than absolute value of list length',
+  declarations: 
+`# Wet Uitgesteld: b
+def method():
+   assert [1,2,3,4,5] == [1,2,3,4,5] #PRECONDITIE
+   a = [1,2,3,4,5]
+   assert a == [1,2,3,4,5]
+   assert a[:-6] + [10] + a[-6:] == [10,1,2,3,4,5] # Uitgesteld
+   a.insert(-6,10)
+   assert a == [10,1,2,3,4,5] # POSTCONDITIE
+   return a
+`,
+  statements: `assert method() == [10,1,2,3,4,5]`,
+  expression: ``
 }, {
   title: 'Simple insert-method to list variable of item at index higher than length of list with other variable in precondition which is not a possible alias',
   declarations: 
@@ -6414,8 +6435,8 @@ def method():
    assert a == [1,2,5] and len(b) == 1 # POSTCONDITIE
    return a
 `,
-statements: `assert method() == [1,2,5]`,
-expression: ``
+  statements: `assert method() == [1,2,5]`,
+  expression: ``
 }, {
   title: 'Simple pop-method to list variable of item at index -1',
   declarations: 
@@ -6429,8 +6450,8 @@ def method():
    assert a == [1,2,3,4] # POSTCONDITIE
    return a
 `,
-statements: `assert method() == [1,2,3,4]`,
-expression: ``
+  statements: `assert method() == [1,2,3,4]`,
+  expression: ``
 }, {
   title: 'Simple pop-method to list variable of item at index 0',
   declarations: 
@@ -6447,8 +6468,8 @@ def method():
    assert a == [2,3,4,5] # POSTCONDITIE
    return a
 `,
-statements: `assert method() == [2,3,4,5]`,
-expression: ``
+  statements: `assert method() == [2,3,4,5]`,
+  expression: ``
 }, {
   title: 'Simple pop-method to list variable of item at index 0 represented by variable, with other variable in precondition which is not a possible alias',
   declarations: 
@@ -6465,8 +6486,8 @@ def method():
    assert a == [2,3,4,5] and b == 0 # POSTCONDITIE
    return a
 `,
-statements: `assert method() == [2,3,4,5]`,
-expression: ``
+  statements: `assert method() == [2,3,4,5]`,
+  expression: ``
 }
 ];
 

@@ -925,9 +925,17 @@ class ListObject extends JavaObject {
   add(item: Value) {
     return this.insert(this.length,item);
   }
+  remove(item: Value) {
+    let firstIndexOfElement = this.getElements().findIndex(e => e == item);
+    if(firstIndexOfElement != -1)
+      return this.pop(firstIndexOfElement);
+    else {
+      throw new Error("Element is not in list.");
+    }
+  }
   pop(index: number) {
     if(index >= this.length)
-      throw new Error("index out of range for pop method.");
+      throw new Error("Index out of range for pop method.");
     const absIndex = index >= 0 ? index : index + this.length;
     let fields: {[index: string]: FieldBinding} = {};
     for (let i = 0; i < absIndex; i++)
@@ -946,7 +954,7 @@ class ListObject extends JavaObject {
     let resultIndex = absIndex;
     if(absIndex < 0)
       resultIndex = 0;
-    else if(absIndex > this.length) 
+    else if(absIndex > this.length)
       resultIndex = this.length;
     for (let i = this.length; i != resultIndex; i--)
       this.fields[i] = this.fields[i-1];
@@ -1219,6 +1227,31 @@ class PopExpression extends Expression {
     if (!(target instanceof ListObject))
       this.executionError(target + " is geen lijst");
     target.pop(index);
+    this.push("void");
+  }
+}
+
+class RemoveExpression extends Expression {
+  constructor(loc: Loc, instrLoc: Loc, public target: Expression, public item: Expression) {
+    super(loc, instrLoc);
+  }
+
+  check(env: Scope) {
+    let targetType = this.target.check_(env);
+    if (!(targetType.isListType()))
+      this.executionError("Het doel van een remove-uitdrukking moet een lijst zijn");
+    this.item.checkAgainst(env, intType);
+    return voidType;
+  }
+
+  async evaluate(env: Scope) {
+    await this.target.evaluate(env);
+    await this.item.evaluate(env);
+    await this.breakpoint();
+    let [target, item] = pop(2);
+    if (!(target instanceof ListObject))
+      this.executionError(target + " is geen lijst");
+    target.remove(item);
     this.push("void");
   }
 }
@@ -2398,6 +2431,24 @@ function parseProofOutline(stmts: Statement[], i: number, precededByAssert: bool
     const parsedPostIndexSliceExpression = parseProofOutlineExpression(postIndexSliceExpressionFirstElementExcluded);
     const concat = App(stmt.expr.loc, App(stmt.expr.loc, Const(stmt.expr.loc, intListPlusConst), parsedPreIndexSliceExpression), parsedPostIndexSliceExpression);
     return Seq(Assign(stmt.loc, proofOutlineVariableOfTarget, concat), parseProofOutline(stmts, i + 1, false));
+  } else if (stmt instanceof ExpressionStatement && stmt.expr instanceof RemoveExpression) {
+    const removeTargetExpression = stmt.expr.target;
+    const removeItemExpression = stmt.expr.item;
+    if (!(removeTargetExpression instanceof VariableExpression))
+      return stmt.executionError(`remove-methodes aan dit type worden nog niet ondersteund.`);
+    const proofOutlineVariableOfTarget = removeTargetExpression.getProofOutlineVariable(() => {
+      return stmt.executionError(`remove-methodes aan variabelen van het type ${stmt.expr.type} worden nog niet ondersteund.`);
+    });
+    const previousStatement = stmts[i-1];
+    const removeTargetExpressionName = removeTargetExpression.name;
+    if (!(previousStatement instanceof AssertStatement))
+      return stmt.executionError(`Opdracht moet worden voorafgegaan door een assert statement`);
+    if (preconditionHasMayAlias(previousStatement.condition, removeTargetExpressionName, stmt.mayAliasRelation!))
+      return stmt.expr.executionError(`Deze opdracht die het list-object ${removeTargetExpressionName} muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als ${removeTargetExpressionName}`);
+    const methodVariableExpression = new VariableExpression(stmt.expr.loc,"remove");
+    const supportMethodCall = new CallExpression(stmt.expr.loc,stmt.expr.instrLoc!,methodVariableExpression,[removeTargetExpression,removeItemExpression])
+    const parsedupportMethodCall = parseProofOutlineExpression(supportMethodCall);
+    return Seq(Assign(stmt.loc, proofOutlineVariableOfTarget, parsedupportMethodCall), parseProofOutline(stmts, i + 1, false));
   } else if (stmt instanceof ExpressionStatement && stmt.expr instanceof AssignmentExpression && stmt.expr.op == '=' && stmt.expr.lhs instanceof SubscriptExpression) {
     const rhs = stmt.expr.rhs;
     const subscriptExpression = stmt.expr.lhs;
@@ -2825,6 +2876,10 @@ class Parser {
             else {
               return this.parseError("'pop' verwacht één of geen argumenten");
             }
+          } else if (e instanceof SelectExpression && e.selector == 'remove') {
+            if (args.length != 1)
+                return this.parseError("'remove' verwacht één argument");
+            e = new RemoveExpression(this.dupLoc(),instrLoc, e.target, args[0]);
           } else if (e instanceof VariableExpression && e.name == 'len') {
             if (args.length != 1)
               return this.parseError("'len' verwacht één argument");
@@ -5696,6 +5751,195 @@ const listMutationViolationExampleAppendTargetNotAList: TestCase = {
   locStart: 36,
   locEnd: 37,
 };
+const listMutationViolationExampleAppendTakesIntAsArgument: TestCase = {
+  declarations:
+`def method():
+    a = [1,2,3,4]
+    a.append(False)
+    return a
+`,
+  errorMessage: `Deze uitdrukking heeft type boolean, maar hier wordt een uitdrukking met type int verwacht`,
+  locStart: 45,
+  locEnd: 50,
+};
+const listMutationViolationExampleClearTargetNotAList: TestCase = {
+  declarations:
+`def method():
+    a = True
+    a.clear()
+    return a
+`,
+  errorMessage: `Het doel van een clear-uitdrukking moet een lijst zijn`,
+  locStart: 38,
+  locEnd: 39,
+};
+const listMutationViolationExampleClearTargetTakesNoArgument: TestCase = {
+  declarations:
+`def method():
+    a = [1,2,3]
+    a.clear(1)
+    return a
+`,
+  errorMessage: `'clear' verwacht geen argumenten`,
+  locStart: 49,
+  locEnd: 49,
+};
+const listMutationViolationExampleExtendTargetNotAList: TestCase = {
+  declarations:
+`def method():
+    a = 0
+    a.extend([1,2,3])
+    return a
+`,
+  errorMessage: `Het doel van een extend-uitdrukking moet een lijst zijn`,
+  locStart: 36,
+  locEnd: 37,
+};
+const listMutationViolationExampleExtendTargetTakesOneArgument: TestCase = {
+  declarations:
+`def method():
+    a = [1,2,3]
+    a.extend()
+    return a
+`,
+  errorMessage: `'extend' verwacht één argument`,
+  locStart: 49,
+  locEnd: 49,
+};
+const listMutationViolationExampleExtendTakesListAsArgument: TestCase = {
+  declarations:
+`def method():
+    a = [1,2,3]
+    a.extend(4)
+    return a
+`,
+  errorMessage: `Het argument van een extend-uitdrukking moet een lijst zijn`,
+  locStart: 42,
+  locEnd: 43,
+};
+const listMutationViolationExampleExtendTakesListOfSameTypeElementsAsArgument: TestCase = {
+  declarations:
+`def method():
+    a = [1,2,3]
+    a.extend([True,1])
+    return a
+`,
+  errorMessage: `Deze uitdrukking heeft type int, maar hier wordt een uitdrukking met type boolean verwacht`,
+  locStart: 49,
+  locEnd: 50,
+};
+const listMutationViolationExampleInsertTargetNotAList: TestCase = {
+  declarations:
+`def method():
+    a = False
+    a.insert(0,1)
+    return a
+`,
+  errorMessage: `Het doel van een insert-uitdrukking moet een lijst zijn`,
+  locStart: 40,
+  locEnd: 41,
+};
+const listMutationViolationExampleInsertTargetTakesTwoArguments: TestCase = {
+  declarations:
+`def method():
+    a = [1,2,3]
+    a.insert(5)
+    return a
+`,
+  errorMessage: `'insert' verwacht twee argumenten`,
+  locStart: 50,
+  locEnd: 50,
+};
+const listMutationViolationExampleInsertTakesIntAsFirstArgument: TestCase = {
+  declarations:
+`def method():
+    a = [1,2,3]
+    a.insert(True,1)
+    return a
+`,
+  errorMessage: `Deze uitdrukking heeft type boolean, maar hier wordt een uitdrukking met type int verwacht`,
+  locStart: 43,
+  locEnd: 47,
+};
+const listMutationViolationExampleInsertTakesIntAsSecondArgument: TestCase = {
+  declarations:
+`def method():
+    a = [1,2,3]
+    a.insert(1,True)
+    return a
+`,
+  errorMessage: `Deze uitdrukking heeft type boolean, maar hier wordt een uitdrukking met type int verwacht`,
+  locStart: 45,
+  locEnd: 49,
+};
+const listMutationViolationExamplePopTargetNotAList: TestCase = {
+  declarations:
+`def method():
+    a = 400
+    a.pop()
+    return a
+`,
+  errorMessage: `Het doel van een pop-uitdrukking moet een lijst zijn`,
+  locStart: 35,
+  locEnd: 36,
+};
+const listMutationViolationExamplePopTakesOneOrZeroArguments: TestCase = {
+  declarations:
+`def method():
+    a = [1,2,3]
+    a.pop(1,0)
+    return a
+`,
+  errorMessage: `'pop' verwacht één of geen argumenten`,
+  locStart: 49,
+  locEnd: 49,
+};
+const listMutationViolationExamplePopTakesIntAsArgument: TestCase = {
+  declarations:
+`def method():
+    a = [1,2,3]
+    a.pop([5])
+    return a
+`,
+  errorMessage: `Deze uitdrukking heeft type list[int], maar hier wordt een uitdrukking met type int verwacht`,
+  locStart: 40,
+  locEnd: 41,
+};
+const listMutationViolationExampleRemoveTargetNotAList: TestCase = {
+  declarations:
+`def method():
+    a = 400
+    a.remove(0)
+    return a
+`,
+  errorMessage: `Het doel van een remove-uitdrukking moet een lijst zijn`,
+  locStart: 38,
+  locEnd: 39,
+};
+const listMutationViolationExampleRemoveTakesOnlyOneArgument: TestCase = {
+  declarations:
+`def method():
+    a = [1,2,3]
+    a.remove()
+    return a
+`,
+  errorMessage: `'remove' verwacht één argument`,
+  locStart: 49,
+  locEnd: 49,
+};
+const listMutationViolationExampleRemoveTakesIntAsArgument: TestCase = {
+  declarations:
+`def method():
+    a = [1,2,3]
+    a.remove(True)
+    return a
+`,
+  errorMessage: `Deze uitdrukking heeft type boolean, maar hier wordt een uitdrukking met type int verwacht`,
+  locStart: 43,
+  locEnd: 47,
+};
+
+
 
 function setExample(example: Example) {
   reset();
@@ -5797,6 +6041,23 @@ async function testAliasingViolationExamples() {
 async function testListMutationViolationExamples() {
   await testListMutationViolationTestCase(listMutationViolationExampleAppendTakesOnlyOneArgument);
   await testListMutationViolationTestCase(listMutationViolationExampleAppendTargetNotAList);
+  await testListMutationViolationTestCase(listMutationViolationExampleAppendTakesIntAsArgument);
+  await testListMutationViolationTestCase(listMutationViolationExampleClearTargetNotAList);
+  await testListMutationViolationTestCase(listMutationViolationExampleClearTargetTakesNoArgument);
+  await testListMutationViolationTestCase(listMutationViolationExampleExtendTargetNotAList);
+  await testListMutationViolationTestCase(listMutationViolationExampleExtendTargetTakesOneArgument);
+  await testListMutationViolationTestCase(listMutationViolationExampleExtendTakesListAsArgument);
+  await testListMutationViolationTestCase(listMutationViolationExampleExtendTakesListOfSameTypeElementsAsArgument);
+  await testListMutationViolationTestCase(listMutationViolationExampleInsertTargetNotAList);
+  await testListMutationViolationTestCase(listMutationViolationExampleInsertTargetTakesTwoArguments);
+  await testListMutationViolationTestCase(listMutationViolationExampleInsertTakesIntAsFirstArgument);
+  await testListMutationViolationTestCase(listMutationViolationExampleInsertTakesIntAsSecondArgument);
+  await testListMutationViolationTestCase(listMutationViolationExamplePopTargetNotAList);
+  await testListMutationViolationTestCase(listMutationViolationExamplePopTakesOneOrZeroArguments);
+  await testListMutationViolationTestCase(listMutationViolationExamplePopTakesIntAsArgument);
+  await testListMutationViolationTestCase(listMutationViolationExampleRemoveTakesOnlyOneArgument);
+  await testListMutationViolationTestCase(listMutationViolationExampleRemoveTargetNotAList);
+  await testListMutationViolationTestCase(listMutationViolationExampleRemoveTakesIntAsArgument);
   console.log("All list mutations violation error tests passed");
 }
 

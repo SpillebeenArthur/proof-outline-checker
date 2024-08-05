@@ -2449,9 +2449,21 @@ function parseProofOutline(stmts: Statement[], i: number, precededByAssert: bool
       return stmt.executionError(`Opdracht moet worden voorafgegaan door een assert statement met daarin een 'remove' call uitdrukking`)
     if (preconditionHasMayAlias(previousStatement.condition, removeTargetExpressionName, stmt.mayAliasRelation!))
       return stmt.expr.executionError(`Deze opdracht die het list-object ${removeTargetExpressionName} muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als ${removeTargetExpressionName}`);
-    const supportMethodCall = previousStatement.condition.leftOperand;
-    const parsedupportMethodCall = parseProofOutlineExpression(supportMethodCall);
-    return Seq(Assign(stmt.loc, proofOutlineVariableOfTarget, parsedupportMethodCall), parseProofOutline(stmts, i + 1, false));
+    let args = [stmt.expr.target, stmt.expr.item];
+    const parseType = (t: Type) => {
+      return parseProofOutlineType(t, () => {
+        return stmt.executionError("Oproepen van functies met een parameter van type '" + t.toString() + "' worden nog niet ondersteund in bewijssilhouetten");
+      });
+    };
+    const constType = args.reduceRight(
+      (acc, p) => TFun(parseType(p.type!), acc), 
+      parseType(stmt.expr.target.type!)
+    );
+    let result = args.reduce( 
+      (acc, arg) => App(stmt.expr.loc, acc, parseProofOutlineExpression(arg)),
+      Const(stmt.expr.loc, mkConst("remove", constType))
+    );
+    return Seq(Assign(stmt.loc, proofOutlineVariableOfTarget, result), parseProofOutline(stmts, i + 1, false));
   } else if (stmt instanceof ExpressionStatement && stmt.expr instanceof AssignmentExpression && stmt.expr.op == '=' && stmt.expr.lhs instanceof SubscriptExpression) {
     const rhs = stmt.expr.rhs;
     const subscriptExpression = stmt.expr.lhs;

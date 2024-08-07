@@ -2445,8 +2445,6 @@ function parseProofOutline(stmts: Statement[], i: number, precededByAssert: bool
     const removeTargetExpressionName = removeTargetExpression.name;
     if (!(previousStatement instanceof AssertStatement))
       return stmt.executionError(`Opdracht moet worden voorafgegaan door een assert statement`);
-    if (!(previousStatement.condition instanceof BinaryOperatorExpression && previousStatement.condition.leftOperand instanceof CallExpression)) 
-      return stmt.executionError(`Opdracht moet worden voorafgegaan door een assert statement met daarin een 'remove' call uitdrukking`)
     if (preconditionHasMayAlias(previousStatement.condition, removeTargetExpressionName, stmt.mayAliasRelation!))
       return stmt.expr.executionError(`Deze opdracht die het list-object ${removeTargetExpressionName} muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als ${removeTargetExpressionName}`);
     let args = [stmt.expr.target, stmt.expr.item];
@@ -5954,8 +5952,6 @@ const listMutationViolationExampleRemoveTakesIntAsArgument: TestCase = {
   locEnd: 47,
 };
 
-
-
 function setExample(example: Example) {
   reset();
   declarationsEditor.setValue(example.declarations || "");
@@ -6763,6 +6759,46 @@ def method():
    return a
 `,
   statements: `assert method() == [2,3,4,5]`,
+  expression: ``
+}, {
+  title: 'Simple remove-method to list variable, with self-written remove helper function',
+  declarations: 
+`def remove(L, E):
+    if L[0] == E:
+        return L[1:]
+    else:
+        return [L[0]] + remove(L[1:], E)
+#Wet Uitgesteld : b
+def removeCall():
+  assert [1,2,1] == [1,2,1] #PRECONDITIE
+  K = [1,2,1]
+  assert K == [1,2,1] 
+  assert remove(K,1) == [2,1] # Uitgesteld
+  K.remove(1)
+  assert K == [2,1]  #POSTCONDITIE
+  return K
+`,
+  statements: `assert removeCall() == [2,1]`,
+  expression: ``
+}, {
+  title: 'Simple remove-method to list variable, with self-written remove helper function with other variable in precondition which is not a possible alias',
+  declarations: 
+`def remove(L, E):
+    if L[0] == E:
+        return L[1:]
+    else:
+        return [L[0]] + remove(L[1:], E)
+#Wet Uitgesteld : b
+def removeCall():
+  assert [1,2,1] == [1,2,1] #PRECONDITIE
+  K = [1,2,1]
+  assert K == [1,2,1] 
+  assert remove(K,1) == [2,1] # Uitgesteld
+  K.remove(1)
+  assert K == [2,1]  #POSTCONDITIE
+  return K
+`,
+  statements: `assert removeCall() == [2,1]`,
   expression: ``
 }
 ];

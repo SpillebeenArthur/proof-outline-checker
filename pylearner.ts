@@ -792,19 +792,23 @@ function createHeapObjectDOMNode(object: JavaObject) {
   return node;
 }
 
-function AddNewFieldToListHeapObjectDOMNode(object: ListObject) {
-  let fieldIndex = object.length.toString();
-  let fieldRow = document.createElement('tr');
-  object.domNode.appendChild(fieldRow);
-  let nameCell = document.createElement('td');
-  fieldRow.appendChild(nameCell);
-  nameCell.className = 'field-name';
-  nameCell.innerText = fieldIndex;
-  let valueCell = document.createElement('td');
-  fieldRow.appendChild(valueCell);
-  valueCell.className = 'field-value';
-  valueCell.innerText = object.fields[fieldIndex].value;
-  object.fields[fieldIndex].valueCell = valueCell;
+function updateListHeapObjectDOMNode(object: ListObject) {
+  while (object.domNode.lastChild && object.domNode.lastChild.firstChild.className != 'object-title-td') {
+    object.domNode.removeChild(object.domNode.lastChild);
+  }
+  for (let field in object.fields) {
+    let fieldRow = document.createElement('tr');
+    object.domNode.appendChild(fieldRow);
+    let nameCell = document.createElement('td');
+    fieldRow.appendChild(nameCell);
+    nameCell.className = 'field-name';
+    nameCell.innerText = field;
+    let valueCell = document.createElement('td');
+    fieldRow.appendChild(valueCell);
+    valueCell.className = 'field-value';
+    valueCell.innerText = object.fields[field].value;
+    object.fields[field].valueCell = valueCell;
+  }
   return object.domNode;
 }
 
@@ -919,11 +923,63 @@ class ListObject extends JavaObject {
     return result;
   }
   add(item: Value) {
-    let newFieldIndex = this.length.toString();
-    this.fields[newFieldIndex] = new FieldBinding(item);
+    return this.insert(this.length,item);
+  }
+  remove(item: Value) {
+    let firstIndexOfElement = this.getElements().findIndex(e => e == item);
+    if(firstIndexOfElement != -1)
+      return this.pop(firstIndexOfElement);
+    else {
+      throw new Error("Element is not in list.");
+    }
+  }
+  pop(index: number) {
+    if(index >= this.length)
+      throw new Error("Index out of range for pop method.");
+    const absIndex = index >= 0 ? index : index + this.length;
+    if(absIndex < 0)
+      throw new Error("Index out of range for pop method.");
+    let fields: {[index: string]: FieldBinding} = {};
+    for (let i = 0; i < absIndex; i++)
+      fields[i] = this.fields[i];
+    for (let i = absIndex; i < this.length-1; i++)
+      fields[i] = this.fields[i+1];
+    this.fields = fields;
     if (typeof document !== 'undefined')
-      this.domNode = AddNewFieldToListHeapObjectDOMNode(this);
-    this.length++
+      this.domNode = updateListHeapObjectDOMNode(this);
+    this.length--;
+    return this;
+    
+  }
+  insert(index: number, item: Value) {
+    const absIndex = index >= 0 ? index : index + this.length;
+    let resultIndex = absIndex;
+    if(absIndex < 0)
+      resultIndex = 0;
+    else if(absIndex > this.length)
+      resultIndex = this.length;
+    for (let i = this.length; i != resultIndex; i--)
+      this.fields[i] = this.fields[i-1];
+    this.fields[resultIndex] = new FieldBinding(item);
+    if (typeof document !== 'undefined')
+      this.domNode = updateListHeapObjectDOMNode(this);
+    this.length++;
+    return this;
+  }
+  clear() {
+    this.fields = {};
+    if (typeof document !== 'undefined')
+      this.domNode = updateListHeapObjectDOMNode(this);
+    this.length = 0;
+    return this;
+  }
+  extend(iterable: ListObject) {
+    const newLength = this.length + iterable.length;
+    for (let i = 0; i < iterable.length; i++)
+      this.fields[i+this.length] = new FieldBinding(iterable.fields[i].value);
+    if (typeof document !== 'undefined')
+      this.domNode = updateListHeapObjectDOMNode(this);
+    this.length = newLength;
     return this;
   }
   plus(other: ListObject) {
@@ -1071,6 +1127,133 @@ class AppendExpression extends Expression {
     if (!(target instanceof ListObject))
       this.executionError(target + " is geen lijst");
     target.add(item);
+    this.push("void");
+  }
+}
+class ClearExpression extends Expression {
+  constructor(loc: Loc, instrLoc: Loc, public target: Expression) {
+    super(loc, instrLoc);
+  }
+
+  check(env: Scope) {
+    let targetType = this.target.check_(env);
+    if (!(targetType.isListType()))
+      this.executionError("Het doel van een clear-uitdrukking moet een lijst zijn");
+    return voidType;
+  }
+
+  async evaluate(env: Scope) {
+    await this.target.evaluate(env);
+    await this.breakpoint();
+    let [target] = pop(1);
+    if (!(target instanceof ListObject))
+      this.executionError(target + " is geen lijst");
+    target.clear();
+    this.push("void");
+  }
+}
+class ExtendExpression extends Expression {
+  constructor(loc: Loc, instrLoc: Loc, public target: Expression, public iterable: Expression) {
+    super(loc, instrLoc);
+  }
+
+  check(env: Scope) {
+    let targetType = this.target.check_(env);
+    if (!(targetType.isListType()))
+      this.executionError("Het doel van een extend-uitdrukking moet een lijst zijn");
+    let iterableType = this.iterable.check_(env);
+    if (!(iterableType.isListType()))
+      this.executionError("Het argument van een extend-uitdrukking moet een lijst zijn");
+    return voidType;
+  }
+
+  async evaluate(env: Scope) {
+    await this.target.evaluate(env);
+    await this.iterable.evaluate(env);
+    await this.breakpoint();
+    let [target, iterable] = pop(2);
+    if (!(target instanceof ListObject))
+      this.executionError(target + " is geen lijst");
+    if (!(iterable instanceof ListObject))
+      this.executionError(target + " is geen lijst");
+    target.extend(iterable);
+    this.push("void");
+  }
+}
+
+class InsertExpression extends Expression {
+  constructor(loc: Loc, instrLoc: Loc, public target: Expression, public index: Expression, public item: Expression) {
+    super(loc, instrLoc);
+  }
+
+  check(env: Scope) {
+    let targetType = this.target.check_(env);
+    if (!(targetType.isListType()))
+      this.executionError("Het doel van een insert-uitdrukking moet een lijst zijn");
+    this.index.checkAgainst(env, intType);
+    this.item.checkAgainst(env, intType);
+    return voidType;
+  }
+
+  async evaluate(env: Scope) {
+    await this.target.evaluate(env);
+    await this.index.evaluate(env);
+    await this.item.evaluate(env);
+    await this.breakpoint();
+    let [target, index, item] = pop(3);
+    if (!(target instanceof ListObject))
+      this.executionError(target + " is geen lijst");
+    target.insert(index, item);
+    this.push("void");
+  }
+}
+
+class PopExpression extends Expression {
+  constructor(loc: Loc, instrLoc: Loc, public target: Expression, public index: Expression) {
+    super(loc, instrLoc);
+  }
+
+  check(env: Scope) {
+    let targetType = this.target.check_(env);
+    if (!(targetType.isListType()))
+      this.executionError("Het doel van een pop-uitdrukking moet een lijst zijn");
+    this.index.checkAgainst(env, intType);
+    return voidType; // TODO: Add support for simultaneous assignment and `pop` return values
+  }
+
+  async evaluate(env: Scope) {
+    await this.target.evaluate(env);
+    await this.index.evaluate(env);
+    await this.breakpoint();
+    let [target, index] = pop(2);
+    if (!(target instanceof ListObject))
+      this.executionError(target + " is geen lijst");
+    target.pop(index);
+    this.push("void");
+  }
+}
+
+class RemoveExpression extends Expression {
+  constructor(loc: Loc, instrLoc: Loc, public target: Expression, public item: Expression) {
+    super(loc, instrLoc);
+  }
+
+  check(env: Scope) {
+    let targetType = this.target.check_(env);
+    if (!(targetType.isListType()))
+      this.executionError("Het doel van een remove-uitdrukking moet een lijst zijn");
+    this.item.checkAgainst(env, intType);
+    return voidType;
+  }
+
+  async evaluate(env: Scope) {
+    await this.target.evaluate(env);
+    await this.item.evaluate(env);
+    await this.breakpoint();
+    let [target, item] = pop(2);
+    if (!(target instanceof ListObject))
+      this.executionError(target + " is geen lijst");
+    target.remove(item);
     this.push("void");
   }
 }
@@ -2159,6 +2342,126 @@ function parseProofOutline(stmts: Statement[], i: number, precededByAssert: bool
     const parsedOriginalListExpression = parseProofOutlineExpression(appendTargetExpression);
     const concat = App(stmt.loc, App(stmt.loc, Const(stmt.loc, intListPlusConst), parsedOriginalListExpression), parsedItemListExpression);
     return Seq(Assign(stmt.loc, proofOutlineVariableOfTarget, concat), parseProofOutline(stmts, i + 1, false));
+  } else if (stmt instanceof ExpressionStatement && stmt.expr instanceof ClearExpression) {
+    const clearTargetExpression = stmt.expr.target;
+    if (!(clearTargetExpression instanceof VariableExpression))
+      return stmt.executionError(`clear-methodes aan dit type worden nog niet ondersteund.`);
+    const proofOutlineVariableOfTarget = clearTargetExpression.getProofOutlineVariable(() => {
+      return stmt.executionError(`clear-methodes aan variabelen van het type ${stmt.expr.type} worden nog niet ondersteund.`);
+    });
+    const previousStatement = stmts[i-1];
+    const clearTargetExpressionName = clearTargetExpression.name;
+    if (!(previousStatement instanceof AssertStatement))
+      return stmt.executionError(`Opdracht moet worden voorafgegaan door een assert statement`);
+    if (preconditionHasMayAlias(previousStatement.condition, clearTargetExpressionName, stmt.mayAliasRelation!))
+      return stmt.expr.executionError(`Deze opdracht die het list-object ${clearTargetExpressionName} muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als ${clearTargetExpressionName}`);
+    const ClearedListExpression = new ListExpression(clearTargetExpression.loc, clearTargetExpression.instrLoc!, new ImplicitTypeExpression(), []);
+    const parsedClearedListExpression = parseProofOutlineExpression(ClearedListExpression);
+    return Seq(Assign(stmt.loc, proofOutlineVariableOfTarget, parsedClearedListExpression), parseProofOutline(stmts, i + 1, false));
+  } else if (stmt instanceof ExpressionStatement && stmt.expr instanceof ExtendExpression) {
+    const extendTargetExpression = stmt.expr.target;
+    if (!(extendTargetExpression instanceof VariableExpression))
+      return stmt.executionError(`extend-methodes aan dit type worden nog niet ondersteund.`);
+    const proofOutlineVariableOfTarget = extendTargetExpression.getProofOutlineVariable(() => {
+      return stmt.executionError(`extend-methodes aan variabelen van het type ${stmt.expr.type} worden nog niet ondersteund.`);
+    });
+    const previousStatement = stmts[i-1];
+    const extendTargetExpressionName = extendTargetExpression.name;
+    if (!(previousStatement instanceof AssertStatement))
+      return stmt.executionError(`Opdracht moet worden voorafgegaan door een assert statement`);
+    if (preconditionHasMayAlias(previousStatement.condition, extendTargetExpressionName, stmt.mayAliasRelation!))
+      return stmt.expr.executionError(`Deze opdracht die het list-object ${extendTargetExpressionName} muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als ${extendTargetExpressionName}`);
+    const parsedIterableExpression = parseProofOutlineExpression(stmt.expr.iterable);
+    const parsedOriginalListExpression = parseProofOutlineExpression(extendTargetExpression);
+    const concat = App(stmt.loc, App(stmt.loc, Const(stmt.loc, intListPlusConst), parsedOriginalListExpression), parsedIterableExpression);
+    return Seq(Assign(stmt.loc, proofOutlineVariableOfTarget, concat), parseProofOutline(stmts, i + 1, false));
+  } else if (stmt instanceof ExpressionStatement && stmt.expr instanceof InsertExpression) {
+    const insertTargetExpression = stmt.expr.target;
+    if (!(insertTargetExpression instanceof VariableExpression))
+      return stmt.executionError(`insert-methodes aan dit type worden nog niet ondersteund.`);
+    const proofOutlineVariableOfTarget = insertTargetExpression.getProofOutlineVariable(() => {
+      return stmt.executionError(`insert-methodes aan variabelen van het type ${stmt.expr.type} worden nog niet ondersteund.`);
+    });
+    const previousStatement = stmts[i-1];
+    const insertTargetExpressionName = insertTargetExpression.name;
+    if (!(previousStatement instanceof AssertStatement))
+      return stmt.executionError(`Opdracht moet worden voorafgegaan door een assert statement`);
+    if (preconditionHasMayAlias(previousStatement.condition, insertTargetExpressionName, stmt.mayAliasRelation!))
+      return stmt.expr.executionError(`Deze opdracht die het list-object ${insertTargetExpressionName} muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als ${insertTargetExpressionName}`);
+    let zeroIntLiteral = new IntLiteral(stmt.loc, 0);
+    zeroIntLiteral.type = intType;
+    const preIndexSliceExpression = new SliceExpression(stmt.expr.loc, stmt.expr.instrLoc!, insertTargetExpression, zeroIntLiteral, stmt.expr.index);
+    const listExpression = new ListExpression(stmt.expr.loc, stmt.expr.index.instrLoc!, new ImplicitTypeExpression(), [stmt.expr.item]);
+    const lenTarget = new LenExpression(stmt.expr.loc, stmt.expr.instrLoc!, insertTargetExpression);
+    lenTarget.type = intType;
+    const postIndexSliceExpression = new SliceExpression(stmt.expr.loc, stmt.expr.instrLoc!, insertTargetExpression, stmt.expr.index, lenTarget);
+    const parsedPreIndexSliceExpression = parseProofOutlineExpression(preIndexSliceExpression);
+    const parsedListExpression = parseProofOutlineExpression(listExpression);
+    const parsedPostIndexSliceExpression = parseProofOutlineExpression(postIndexSliceExpression);
+    const leftConcat = App(stmt.expr.loc, App(stmt.expr.loc, Const(stmt.expr.loc, intListPlusConst), parsedPreIndexSliceExpression), parsedListExpression);
+    const concat = App(stmt.expr.loc, App(stmt.expr.loc, Const(stmt.expr.loc, intListPlusConst), leftConcat), parsedPostIndexSliceExpression);
+    return Seq(Assign(stmt.loc, proofOutlineVariableOfTarget, concat), parseProofOutline(stmts, i + 1, false));
+  } else if (stmt instanceof ExpressionStatement && stmt.expr instanceof PopExpression) {
+    const popTargetExpression = stmt.expr.target;
+    const popExpressionTargetType = popTargetExpression.type;
+    if (!(popTargetExpression instanceof VariableExpression))
+      return stmt.executionError(`pop-methodes aan dit type worden nog niet ondersteund.`);
+    const proofOutlineVariableOfTarget = popTargetExpression.getProofOutlineVariable(() => {
+      return stmt.executionError(`pop-methodes aan variabelen van het type ${stmt.expr.type} worden nog niet ondersteund.`);
+    });
+    const previousStatement = stmts[i-1];
+    const popTargetExpressionName = popTargetExpression.name;
+    if (!(previousStatement instanceof AssertStatement))
+      return stmt.executionError(`Opdracht moet worden voorafgegaan door een assert statement`);
+    if (preconditionHasMayAlias(previousStatement.condition, popTargetExpressionName, stmt.mayAliasRelation!))
+      return stmt.expr.executionError(`Deze opdracht die het list-object ${popTargetExpressionName} muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als ${popTargetExpressionName}`);
+    let zeroIntLiteral = new IntLiteral(stmt.loc, 0);
+    zeroIntLiteral.type = intType;
+    const preIndexSliceExpression = new SliceExpression(stmt.expr.loc, stmt.expr.instrLoc!, popTargetExpression, zeroIntLiteral, stmt.expr.index);
+    preIndexSliceExpression.type = popExpressionTargetType;
+    const lenTarget = new LenExpression(stmt.expr.loc, stmt.expr.instrLoc!, popTargetExpression);
+    lenTarget.type = intType;
+    const postIndexSliceExpression = new SliceExpression(stmt.expr.loc, stmt.expr.instrLoc!, popTargetExpression, stmt.expr.index, lenTarget);
+    postIndexSliceExpression.type = popExpressionTargetType;
+    const lenSlicedExpression = new LenExpression(stmt.expr.loc, stmt.expr.instrLoc!, postIndexSliceExpression);
+    lenSlicedExpression.type = intType;
+    let oneIntLiteral = new IntLiteral(stmt.loc, 1);
+    oneIntLiteral.type = intType;
+    const postIndexSliceExpressionFirstElementExcluded = new SliceExpression(stmt.expr.loc, stmt.expr.instrLoc!, postIndexSliceExpression, oneIntLiteral, lenSlicedExpression);
+    postIndexSliceExpressionFirstElementExcluded.type = popExpressionTargetType;
+    const parsedPreIndexSliceExpression = parseProofOutlineExpression(preIndexSliceExpression);
+    const parsedPostIndexSliceExpression = parseProofOutlineExpression(postIndexSliceExpressionFirstElementExcluded);
+    const concat = App(stmt.expr.loc, App(stmt.expr.loc, Const(stmt.expr.loc, intListPlusConst), parsedPreIndexSliceExpression), parsedPostIndexSliceExpression);
+    return Seq(Assign(stmt.loc, proofOutlineVariableOfTarget, concat), parseProofOutline(stmts, i + 1, false));
+  } else if (stmt instanceof ExpressionStatement && stmt.expr instanceof RemoveExpression) {
+    const removeTargetExpression = stmt.expr.target;
+    const removeItemExpression = stmt.expr.item;
+    if (!(removeTargetExpression instanceof VariableExpression))
+      return stmt.executionError(`remove-methodes aan dit type worden nog niet ondersteund.`);
+    const proofOutlineVariableOfTarget = removeTargetExpression.getProofOutlineVariable(() => {
+      return stmt.executionError(`remove-methodes aan variabelen van het type ${stmt.expr.type} worden nog niet ondersteund.`);
+    });
+    const previousStatement = stmts[i-1];
+    const removeTargetExpressionName = removeTargetExpression.name;
+    if (!(previousStatement instanceof AssertStatement))
+      return stmt.executionError(`Opdracht moet worden voorafgegaan door een assert statement`);
+    if (preconditionHasMayAlias(previousStatement.condition, removeTargetExpressionName, stmt.mayAliasRelation!))
+      return stmt.expr.executionError(`Deze opdracht die het list-object ${removeTargetExpressionName} muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als ${removeTargetExpressionName}`);
+    let args = [stmt.expr.target, stmt.expr.item];
+    const parseType = (t: Type) => {
+      return parseProofOutlineType(t, () => {
+        return stmt.executionError("Oproepen van functies met een parameter van type '" + t.toString() + "' worden nog niet ondersteund in bewijssilhouetten");
+      });
+    };
+    const constType = args.reduceRight(
+      (acc, p) => TFun(parseType(p.type!), acc), 
+      parseType(stmt.expr.target.type!)
+    );
+    let result = args.reduce( 
+      (acc, arg) => App(stmt.expr.loc, acc, parseProofOutlineExpression(arg)),
+      Const(stmt.expr.loc, mkConst("remove", constType))
+    );
+    return Seq(Assign(stmt.loc, proofOutlineVariableOfTarget, result), parseProofOutline(stmts, i + 1, false));
   } else if (stmt instanceof ExpressionStatement && stmt.expr instanceof AssignmentExpression && stmt.expr.op == '=' && stmt.expr.lhs instanceof SubscriptExpression) {
     const rhs = stmt.expr.rhs;
     const subscriptExpression = stmt.expr.lhs;
@@ -2566,6 +2869,30 @@ class Parser {
             if (args.length != 1)
                return this.parseError("'append' verwacht één argument");
             e = new AppendExpression(this.dupLoc(),instrLoc, e.target, args[0]);
+          } else if (e instanceof SelectExpression && e.selector == 'clear') {
+            if (args.length != 0)
+                return this.parseError("'clear' verwacht geen argumenten");
+            e = new ClearExpression(this.dupLoc(),instrLoc, e.target);
+          } else if (e instanceof SelectExpression && e.selector == 'extend') {
+            if (args.length != 1)
+                return this.parseError("'extend' verwacht één argument");
+            e = new ExtendExpression(this.dupLoc(),instrLoc, e.target, args[0]);
+          } else if (e instanceof SelectExpression && e.selector == 'insert') {
+            if (args.length != 2)
+                return this.parseError("'insert' verwacht twee argumenten");
+            e = new InsertExpression(this.dupLoc(),instrLoc, e.target, args[0], args[1]);
+          } else if (e instanceof SelectExpression && e.selector == 'pop') {
+            if (args.length == 0)
+              e = new PopExpression(this.dupLoc(),instrLoc, e.target, new IntLiteral(instrLoc,-1,true));
+            else if (args.length == 1)
+              e = new PopExpression(this.dupLoc(),instrLoc, e.target, args[0]);
+            else {
+              return this.parseError("'pop' verwacht één of geen argumenten");
+            }
+          } else if (e instanceof SelectExpression && e.selector == 'remove') {
+            if (args.length != 1)
+                return this.parseError("'remove' verwacht één argument");
+            e = new RemoveExpression(this.dupLoc(),instrLoc, e.target, args[0]);
           } else if (e instanceof VariableExpression && e.name == 'len') {
             if (args.length != 1)
               return this.parseError("'len' verwacht één argument");
@@ -5415,6 +5742,172 @@ def method():
   locStart: 226,
   locEnd: 227
 };
+const aliasViolationExampleClearMethod: TestCase = {
+  declarations:
+`# Wet Uitgesteld: b
+def method(x):
+    assert [1,2] == [1,2] #PRECONDITIE
+    a = [1,2]
+    assert a == [1,2]
+    assert  [2,2] == [2,2] # Uitgesteld
+    b = [2,2]
+    assert  b == [2,2]
+    assert True
+    if x:
+      assert True and x
+      assert b == b
+      a = b
+      assert a == b
+      assert True
+      
+    else:
+      assert True and not x
+      assert 1 == 1 # Uitgesteld
+      d = 1
+      assert d == 1
+      assert True
+    assert True
+    assert [] == [] and len(b) == 2 # Uitgesteld
+    a.clear()
+    assert a == [] and len(b) == 2 #POSTCONDITIE
+`,
+  errorMessage: `Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a`,
+  locStart: 511,
+  locEnd: 512
+};
+const aliasViolationExampleExtendMethod: TestCase = {
+  declarations:
+`# Wet Uitgesteld: b
+def method(x):
+    assert [1,2] == [1,2] #PRECONDITIE
+    a = [1,2]
+    assert a == [1,2]
+    assert  [2,2] == [2,2] # Uitgesteld
+    b = [2,2]
+    assert  b == [2,2]
+    assert True
+    if x:
+      assert True and x
+      assert a == a # Uitgesteld
+      b = a
+      assert b == a
+      assert True
+    else:
+      assert True and not x
+      assert 5 == 5
+      c = 5
+      assert c == 5
+      assert True
+    assert True
+    assert a + b == [1,2,2,2] and len(b) == 2 # Uitgesteld
+    a.extend(b)
+    assert a == [1,2,2,2] and len(b) == 2 #POSTCONDITIE
+`,
+  errorMessage: `Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a`,
+  locStart: 515,
+  locEnd: 516
+};
+const aliasViolationExampleInsertMethod: TestCase = {
+  declarations:
+`# Wet Uitgesteld: b
+def method(x):
+    assert [1,2] == [1,2] #PRECONDITIE
+    a = [1,2]
+    assert a == [1,2]
+    assert  [2,2] == [2,2] # Uitgesteld
+    b = [2,2]
+    assert  b == [2,2]
+    assert True
+    if x:
+      assert True and x
+      assert a == a # Uitgesteld
+      b = a
+      assert b == a
+      assert True
+    else:
+      assert True and not x
+      assert 5 == 5
+      c = 5
+      assert c == 5
+      assert True
+    assert True
+    assert a[:0] + [5] + a[0:] == [5,1,2] and b == [2,2] # Uitgesteld
+    a.insert(0,5)
+    assert a == [5,1,2] and b == [2,2] # POSTCONDITIE
+`,
+  errorMessage: `Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a`,
+  locStart: 526,
+  locEnd: 527
+};
+const aliasViolationExamplePopMethod: TestCase = {
+  declarations:
+`# Wet Uitgesteld: b
+def method(x):
+    assert [1,2] == [1,2] #PRECONDITIE
+    a = [1,2]
+    assert a == [1,2]
+    assert  [2,2] == [2,2] # Uitgesteld
+    b = [2,2]
+    assert  b == [2,2]
+    assert True
+    if x:
+      assert True and x
+      assert 5 == 5 # Uitgesteld
+      c = 5
+      assert c == 5
+      assert True
+    else:
+      assert True and not x
+      assert b == b # Uitgesteld
+      a = b
+      assert a == b
+      assert True
+    assert True 
+    assert a[:-1] + a[-1:][1:] == [1] and len(b) == 2 # Uitgesteld
+    a.pop(-1)
+    assert a == [1] and len(b) == 2 # POSTCONDITIE
+`,
+  errorMessage: `Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a`,
+  locStart: 534,
+  locEnd: 535
+};
+const aliasViolationExampleRemoveMethod: TestCase = {
+  declarations:
+`def remove(L, E):
+    if L[0] == E:
+        return L[1:]
+    else:
+        return [L[0]] + remove(L[1:], E)
+# Wet Uitgesteld: b
+def method(x):
+    assert [1,2] == [1,2] #PRECONDITIE
+    a = [1,2]
+    assert a == [1,2]
+    assert  [2,2] == [2,2] # Uitgesteld
+    b = [2,2]
+    assert  b == [2,2]
+    assert True
+    if x:
+      assert True and x
+      assert 5 == 5 # Uitgesteld
+      c = 5
+      assert c == 5
+      assert True
+    else:
+      assert True and not x
+      assert b == b # Uitgesteld
+      a = b
+      assert a == b
+      assert True
+    assert True 
+    assert remove(a,1) == [2] and b == [3,3] # Uitgesteld
+    a.remove(1)
+    assert a == [2] and b == [3,3]  #POSTCONDITIE
+`,
+  errorMessage: `Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a`,
+  locStart: 636,
+  locEnd: 637
+};
 const listMutationViolationExampleAppendTakesOnlyOneArgument: TestCase = {
   declarations:
 `def method():
@@ -5436,6 +5929,193 @@ const listMutationViolationExampleAppendTargetNotAList: TestCase = {
   errorMessage: `Het doel van een append-uitdrukking moet een lijst zijn`,
   locStart: 36,
   locEnd: 37,
+};
+const listMutationViolationExampleAppendTakesIntAsArgument: TestCase = {
+  declarations:
+`def method():
+    a = [1,2,3,4]
+    a.append(False)
+    return a
+`,
+  errorMessage: `Deze uitdrukking heeft type boolean, maar hier wordt een uitdrukking met type int verwacht`,
+  locStart: 45,
+  locEnd: 50,
+};
+const listMutationViolationExampleClearTargetNotAList: TestCase = {
+  declarations:
+`def method():
+    a = True
+    a.clear()
+    return a
+`,
+  errorMessage: `Het doel van een clear-uitdrukking moet een lijst zijn`,
+  locStart: 38,
+  locEnd: 39,
+};
+const listMutationViolationExampleClearTargetTakesNoArgument: TestCase = {
+  declarations:
+`def method():
+    a = [1,2,3]
+    a.clear(1)
+    return a
+`,
+  errorMessage: `'clear' verwacht geen argumenten`,
+  locStart: 49,
+  locEnd: 49,
+};
+const listMutationViolationExampleExtendTargetNotAList: TestCase = {
+  declarations:
+`def method():
+    a = 0
+    a.extend([1,2,3])
+    return a
+`,
+  errorMessage: `Het doel van een extend-uitdrukking moet een lijst zijn`,
+  locStart: 36,
+  locEnd: 37,
+};
+const listMutationViolationExampleExtendTargetTakesOneArgument: TestCase = {
+  declarations:
+`def method():
+    a = [1,2,3]
+    a.extend()
+    return a
+`,
+  errorMessage: `'extend' verwacht één argument`,
+  locStart: 49,
+  locEnd: 49,
+};
+const listMutationViolationExampleExtendTakesListAsArgument: TestCase = {
+  declarations:
+`def method():
+    a = [1,2,3]
+    a.extend(4)
+    return a
+`,
+  errorMessage: `Het argument van een extend-uitdrukking moet een lijst zijn`,
+  locStart: 42,
+  locEnd: 43,
+};
+const listMutationViolationExampleExtendTakesListOfSameTypeElementsAsArgument: TestCase = {
+  declarations:
+`def method():
+    a = [1,2,3]
+    a.extend([True,1])
+    return a
+`,
+  errorMessage: `Deze uitdrukking heeft type int, maar hier wordt een uitdrukking met type boolean verwacht`,
+  locStart: 49,
+  locEnd: 50,
+};
+const listMutationViolationExampleInsertTargetNotAList: TestCase = {
+  declarations:
+`def method():
+    a = False
+    a.insert(0,1)
+    return a
+`,
+  errorMessage: `Het doel van een insert-uitdrukking moet een lijst zijn`,
+  locStart: 40,
+  locEnd: 41,
+};
+const listMutationViolationExampleInsertTargetTakesTwoArguments: TestCase = {
+  declarations:
+`def method():
+    a = [1,2,3]
+    a.insert(5)
+    return a
+`,
+  errorMessage: `'insert' verwacht twee argumenten`,
+  locStart: 50,
+  locEnd: 50,
+};
+const listMutationViolationExampleInsertTakesIntAsFirstArgument: TestCase = {
+  declarations:
+`def method():
+    a = [1,2,3]
+    a.insert(True,1)
+    return a
+`,
+  errorMessage: `Deze uitdrukking heeft type boolean, maar hier wordt een uitdrukking met type int verwacht`,
+  locStart: 43,
+  locEnd: 47,
+};
+const listMutationViolationExampleInsertTakesIntAsSecondArgument: TestCase = {
+  declarations:
+`def method():
+    a = [1,2,3]
+    a.insert(1,True)
+    return a
+`,
+  errorMessage: `Deze uitdrukking heeft type boolean, maar hier wordt een uitdrukking met type int verwacht`,
+  locStart: 45,
+  locEnd: 49,
+};
+const listMutationViolationExamplePopTargetNotAList: TestCase = {
+  declarations:
+`def method():
+    a = 400
+    a.pop()
+    return a
+`,
+  errorMessage: `Het doel van een pop-uitdrukking moet een lijst zijn`,
+  locStart: 35,
+  locEnd: 36,
+};
+const listMutationViolationExamplePopTakesOneOrZeroArguments: TestCase = {
+  declarations:
+`def method():
+    a = [1,2,3]
+    a.pop(1,0)
+    return a
+`,
+  errorMessage: `'pop' verwacht één of geen argumenten`,
+  locStart: 49,
+  locEnd: 49,
+};
+const listMutationViolationExamplePopTakesIntAsArgument: TestCase = {
+  declarations:
+`def method():
+    a = [1,2,3]
+    a.pop([5])
+    return a
+`,
+  errorMessage: `Deze uitdrukking heeft type list[int], maar hier wordt een uitdrukking met type int verwacht`,
+  locStart: 40,
+  locEnd: 41,
+};
+const listMutationViolationExampleRemoveTargetNotAList: TestCase = {
+  declarations:
+`def method():
+    a = 400
+    a.remove(0)
+    return a
+`,
+  errorMessage: `Het doel van een remove-uitdrukking moet een lijst zijn`,
+  locStart: 38,
+  locEnd: 39,
+};
+const listMutationViolationExampleRemoveTakesOnlyOneArgument: TestCase = {
+  declarations:
+`def method():
+    a = [1,2,3]
+    a.remove()
+    return a
+`,
+  errorMessage: `'remove' verwacht één argument`,
+  locStart: 49,
+  locEnd: 49,
+};
+const listMutationViolationExampleRemoveTakesIntAsArgument: TestCase = {
+  declarations:
+`def method():
+    a = [1,2,3]
+    a.remove(True)
+    return a
+`,
+  errorMessage: `Deze uitdrukking heeft type boolean, maar hier wordt een uitdrukking met type int verwacht`,
+  locStart: 43,
+  locEnd: 47,
 };
 
 function setExample(example: Example) {
@@ -5532,12 +6212,34 @@ async function testAliasingViolationExamples() {
   await testAliasingViolationTestCase(aliasViolationExampleSingleWhileLusMultipleLoopings);
   await testAliasingViolationTestCase(aliasViolationExampleSameVariableAssigment);
   await testAliasingViolationTestCase(aliasViolationExampleAppendMethod);
+  await testAliasingViolationTestCase(aliasViolationExampleClearMethod);
+  await testAliasingViolationTestCase(aliasViolationExampleExtendMethod);
+  await testAliasingViolationTestCase(aliasViolationExampleInsertMethod);
+  await testAliasingViolationTestCase(aliasViolationExamplePopMethod);
+  await testAliasingViolationTestCase(aliasViolationExampleRemoveMethod);
   console.log("All alias violation error tests passed!");
 }
 
 async function testListMutationViolationExamples() {
   await testListMutationViolationTestCase(listMutationViolationExampleAppendTakesOnlyOneArgument);
   await testListMutationViolationTestCase(listMutationViolationExampleAppendTargetNotAList);
+  await testListMutationViolationTestCase(listMutationViolationExampleAppendTakesIntAsArgument);
+  await testListMutationViolationTestCase(listMutationViolationExampleClearTargetNotAList);
+  await testListMutationViolationTestCase(listMutationViolationExampleClearTargetTakesNoArgument);
+  await testListMutationViolationTestCase(listMutationViolationExampleExtendTargetNotAList);
+  await testListMutationViolationTestCase(listMutationViolationExampleExtendTargetTakesOneArgument);
+  await testListMutationViolationTestCase(listMutationViolationExampleExtendTakesListAsArgument);
+  await testListMutationViolationTestCase(listMutationViolationExampleExtendTakesListOfSameTypeElementsAsArgument);
+  await testListMutationViolationTestCase(listMutationViolationExampleInsertTargetNotAList);
+  await testListMutationViolationTestCase(listMutationViolationExampleInsertTargetTakesTwoArguments);
+  await testListMutationViolationTestCase(listMutationViolationExampleInsertTakesIntAsFirstArgument);
+  await testListMutationViolationTestCase(listMutationViolationExampleInsertTakesIntAsSecondArgument);
+  await testListMutationViolationTestCase(listMutationViolationExamplePopTargetNotAList);
+  await testListMutationViolationTestCase(listMutationViolationExamplePopTakesOneOrZeroArguments);
+  await testListMutationViolationTestCase(listMutationViolationExamplePopTakesIntAsArgument);
+  await testListMutationViolationTestCase(listMutationViolationExampleRemoveTakesOnlyOneArgument);
+  await testListMutationViolationTestCase(listMutationViolationExampleRemoveTargetNotAList);
+  await testListMutationViolationTestCase(listMutationViolationExampleRemoveTakesIntAsArgument);
   console.log("All list mutations violation error tests passed");
 }
 
@@ -5848,8 +6550,8 @@ def methode():
         assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
     assert i <= n and not i < n #POSTCONDITIE
 `,
-statements: ``,
-expression: ``
+  statements: ``,
+  expression: ``
 }, {
   title: 'Aliasing with double while loop',
   declarations:
@@ -5963,8 +6665,8 @@ def methode():
         assert i <= n and 0 <= n - i < oude_variant #Uitgesteld
     assert i <= n and not i < n #POSTCONDITIE
 `,
-statements: ``,
-expression: ``
+  statements: ``,
+  expression: ``
 }, {
   title: 'Simple append-method to list variable',
   declarations: 
@@ -5977,8 +6679,8 @@ def method():
    a.append(1)
    assert a == [1,2,1] #POSTCONDITIE
 `,
-statements: ``,
-expression: ``
+  statements: ``,
+  expression: ``
 }, {
   title: 'Simple append-method to list variable with other variable in precondition which is not a possible alias',
   declarations: 
@@ -5994,8 +6696,8 @@ def method():
    a.append(1)
    assert a == [1,2,1] and len(b) == 2 #POSTCONDITIE
 `,
-statements: ``,
-expression: ``
+  statements: ``,
+  expression: ``
 }, {
   title: 'Repeat-method to retrieve list of n times x',
   declarations: 
@@ -6007,12 +6709,271 @@ expression: ``
     i = i + 1
   return list
 `,
-statements: 
+  statements: 
 `assert repeat(0,1) == []
 assert repeat(1,5) == [5]
 assert repeat(4,3) == [3,3,3,3]
 `,
-expression: `repeat(5,1)`
+  expression: `repeat(5,1)`
+}, {
+  title: 'Simple clear-method to list variable',
+  declarations: 
+`# Wet Uitgesteld: b
+def method():
+   assert [1,2] == [1,2] #PRECONDITIE
+   a = [1,2]
+   assert a == [1,2]
+   assert [] == [] 
+   a.clear() # Uitgesteld
+   assert a == [] # POSTCONDITIE
+   return a
+`,
+  statements: `assert method() == []`,
+  expression: ``
+}, {
+  title: 'Simple clear-method to list variable with other variable in precondition which is not a possible alias',
+  declarations: 
+`# Wet Uitgesteld: b
+def method():
+   assert [1,2] == [1,2] #PRECONDITIE
+   a = [1,2]
+   assert a == [1,2]
+   assert [2,1] == [2,1]
+   b = [2,1]
+   assert b == [2,1]
+   assert [] == [] and len(b) == 2 # Uitgesteld
+   a.clear() # Uitgesteld
+   assert a == [] and len(b) == 2 # POSTCONDITIE
+   return a
+`,
+  statements: `assert method() == []`,
+  expression: ``
+}, {
+  title: 'Simple extend-method to list variable with other list variable',
+  declarations: 
+`# Wet Uitgesteld: b
+def method():
+   assert [1,2] == [1,2] #PRECONDITIE
+   a = [1,2]
+   assert a == [1,2]
+   assert [2,25] == [2,25] # Uitgesteld
+   b = [2,25]
+   assert b == [2,25]
+   assert a + b == [1,2,2,25] # Uitgesteld
+   a.extend(b)
+   assert a == [1,2,2,25] # POSTCONDITIE
+   return a
+`,
+  statements: `assert method() == [1,2,2,25]`,
+  expression: ``
+}, {
+  title: 'Simple extend-method to list variable with other list',
+  declarations: 
+`# Wet Uitgesteld: b
+def method():
+   assert [1,2] == [1,2] #PRECONDITIE
+   a = [1,2]
+   assert a == [1,2]
+   assert a + [4] == [1,2,4] # Uitgesteld
+   a.extend([4])
+   assert a == [1,2,4] # POSTCONDITIE
+   return a
+`,
+  statements: `assert method() == [1,2,4]`,
+  expression: ``
+}, {
+  title: 'Simple extend-method to list variable with other list with other variable in precondition which is not a possible alias',
+  declarations: 
+`# Wet Uitgesteld: b
+def method():
+   assert [1,2] == [1,2] #PRECONDITIE
+   a = [1,2]
+   assert a == [1,2]
+   assert a == a # Uitgesteld
+   b = a
+   assert b == a
+   assert [0] == [0] # Uitgesteld
+   c = [0]
+   assert c == [0]
+   assert a + c == [1,2,0] # Uitgesteld
+   a.extend(c)
+   assert a == [1,2,0] # POSTCONDITIE
+   return a
+`,
+  statements: `assert method() == [1,2,0]`,
+  expression: ``
+}, {
+  title: 'Simple insert-method to list variable of item at positive index',
+  declarations: 
+`# Wet Uitgesteld: b
+def method():
+   assert [1,2] == [1,2] #PRECONDITIE
+   a = [1,2]
+   assert a == [1,2]
+   assert a[:0] + [5] + a[0:] == [5,1,2] # Uitgesteld
+   a.insert(0,5)
+   assert a == [5,1,2] # POSTCONDITIE
+   return a
+`,
+  statements: `assert method() == [5,1,2]`,
+  expression: ``
+}, {
+  title: 'Simple insert-method to list variable of item at negative index',
+  declarations: 
+`# Wet Uitgesteld: b
+def method():
+   assert [1,2] == [1,2] #PRECONDITIE
+   a = [1,2]
+   assert a == [1,2]
+   assert a[:-1] + [5] + a[-1:] == [1,5,2] # Uitgesteld
+   a.insert(-1,5)
+   assert a == [1,5,2] # POSTCONDITIE
+   return a
+`,
+  statements: `assert method() == [1,5,2]`,
+  expression: ``
+}, {
+  title: 'Simple insert-method to list variable of item at index higher than length of list',
+  declarations: 
+`# Wet Uitgesteld: b
+def method():
+   assert [1,2] == [1,2] #PRECONDITIE
+   a = [1,2]
+   assert a == [1,2]
+   assert a[:3] + [5] + a[3:] == [1,2,5] # Uitgesteld
+   a.insert(3,5)
+   assert a == [1,2,5] # POSTCONDITIE
+   return a
+`,
+  statements: `assert method() == [1,2,5]`,
+  expression: ``
+}, {
+  title: 'Simple insert-method to list variable of item at negative index, higher than absolute value of list length',
+  declarations: 
+`# Wet Uitgesteld: b
+def method():
+   assert [1,2,3,4,5] == [1,2,3,4,5] #PRECONDITIE
+   a = [1,2,3,4,5]
+   assert a == [1,2,3,4,5]
+   assert a[:-6] + [10] + a[-6:] == [10,1,2,3,4,5] # Uitgesteld
+   a.insert(-6,10)
+   assert a == [10,1,2,3,4,5] # POSTCONDITIE
+   return a
+`,
+  statements: `assert method() == [10,1,2,3,4,5]`,
+  expression: ``
+}, {
+  title: 'Simple insert-method to list variable of item at index higher than length of list with other variable in precondition which is not a possible alias',
+  declarations: 
+`# Wet Uitgesteld: b
+def method():
+   assert [1,2] == [1,2] #PRECONDITIE
+   a = [1,2]
+   assert a == [1,2]
+   assert [5] == [5]
+   b = [5]
+   assert b == [5]
+   assert a[:3] + [5] + a[3:] == [1,2,5] and len(b) == 1 # Uitgesteld
+   a.insert(3,5)
+   assert a == [1,2,5] and len(b) == 1 # POSTCONDITIE
+   return a
+`,
+  statements: `assert method() == [1,2,5]`,
+  expression: ``
+}, {
+  title: 'Simple pop-method to list variable of item at index -1',
+  declarations: 
+`# Wet Uitgesteld: b
+def method():
+   assert [1,2,3,4,5] == [1,2,3,4,5] #PRECONDITIE
+   a = [1,2,3,4,5]
+   assert a == [1,2,3,4,5]
+   assert a[:-1] + a[-1:][1:] == [1,2,3,4] # Uitgesteld
+   a.pop(-1)
+   assert a == [1,2,3,4] # POSTCONDITIE
+   return a
+`,
+  statements: `assert method() == [1,2,3,4]`,
+  expression: ``
+}, {
+  title: 'Simple pop-method to list variable of item at index 0',
+  declarations: 
+`# Wet Uitgesteld: b
+def method():
+   assert [1,2,3,4,5] == [1,2,3,4,5] #PRECONDITIE
+   a = [1,2,3,4,5]
+   assert a == [1,2,3,4,5]
+   assert 0 == 0 # Uitgesteld
+   b = 0
+   assert b == 0
+   assert a[:0] + a[0:][1:] == [2,3,4,5] # Uitgesteld
+   a.pop(0)
+   assert a == [2,3,4,5] # POSTCONDITIE
+   return a
+`,
+  statements: `assert method() == [2,3,4,5]`,
+  expression: ``
+}, {
+  title: 'Simple pop-method to list variable of item at index 0 represented by variable, with other variable in precondition which is not a possible alias',
+  declarations: 
+`# Wet Uitgesteld: b
+def method():
+   assert [1,2,3,4,5] == [1,2,3,4,5] #PRECONDITIE
+   a = [1,2,3,4,5]
+   assert a == [1,2,3,4,5]
+   assert 0 == 0 # Uitgesteld
+   b = 0
+   assert b == 0
+   assert a[:b] + a[b:][1:] == [2,3,4,5] and b == 0 # Uitgesteld
+   a.pop(b)
+   assert a == [2,3,4,5] and b == 0 # POSTCONDITIE
+   return a
+`,
+  statements: `assert method() == [2,3,4,5]`,
+  expression: ``
+}, {
+  title: 'Simple remove-method to list variable, with self-written remove helper function',
+  declarations: 
+`def remove(L, E):
+    if L[0] == E:
+        return L[1:]
+    else:
+        return [L[0]] + remove(L[1:], E)
+#Wet Uitgesteld : b
+def removeCall():
+  assert [1,2,1] == [1,2,1] #PRECONDITIE
+  K = [1,2,1]
+  assert K == [1,2,1] 
+  assert remove(K,1) == [2,1] # Uitgesteld
+  K.remove(1)
+  assert K == [2,1]  #POSTCONDITIE
+  return K
+`,
+  statements: `assert removeCall() == [2,1]`,
+  expression: ``
+}, {
+  title: 'Simple remove-method to list variable, with self-written remove helper function with other variable in precondition which is not a possible alias',
+  declarations: 
+`def remove(L, E):
+    if L[0] == E:
+        return L[1:]
+    else:
+        return [L[0]] + remove(L[1:], E)
+#Wet Uitgesteld : b
+def removeCall():
+  assert [1,2,1] == [1,2,1] #PRECONDITIE
+  K = [1,2,1]
+  assert K == [1,2,1]
+  assert [3,3] == [3,3] # Uitgesteld
+  B = [3,3]
+  assert B == [3,3]
+  assert remove(K,1) == [2,1] and B == [3,3] # Uitgesteld
+  K.remove(1)
+  assert K == [2,1] and B == [3,3]  #POSTCONDITIE
+  return K
+`,
+  statements: `assert removeCall() == [2,1]`,
+  expression: ``
 }
 ];
 

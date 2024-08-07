@@ -2462,6 +2462,29 @@ function parseProofOutline(stmts: Statement[], i: number, precededByAssert: bool
       Const(stmt.expr.loc, mkConst("remove", constType))
     );
     return Seq(Assign(stmt.loc, proofOutlineVariableOfTarget, result), parseProofOutline(stmts, i + 1, false));
+  } else if (stmt instanceof ExpressionStatement && stmt.expr instanceof AssignmentExpression && stmt.expr.op == '=' && stmt.expr.lhs instanceof SliceExpression && stmt.expr.lhs.target instanceof VariableExpression) {
+    const L1 = stmt.expr.lhs.target;
+    const proofOutlineVariableOfL1Target = L1.getProofOutlineVariable(() => {
+      return stmt.executionError(`Toekenningen aan variabelen van het type ${L1.type} worden nog niet ondersteund.`);
+    });
+    const L2 = stmt.expr.rhs;
+    const startIndex = stmt.expr.lhs.startIndex;
+    const endIndex = stmt.expr.lhs.endIndex;
+    const args = [L1, startIndex, endIndex, L2];
+    const parseType = (t: Type) => {
+      return parseProofOutlineType(t, () => {
+        return stmt.executionError("Oproepen van functies met een parameter van type '" + t.toString() + "' worden nog niet ondersteund in bewijssilhouetten");
+      });
+    };
+    const constType = args.reduceRight(
+      (acc, p) => TFun(parseType(p.type!), acc), 
+      parseType(stmt.expr.lhs.target.type!)
+    );
+    let result = args.reduce( 
+      (acc, arg) => App(stmt.expr.loc, acc, parseProofOutlineExpression(arg)),
+      Const(stmt.expr.loc, mkConst("with_slice", constType))
+    );
+    return Seq(Assign(stmt.loc, proofOutlineVariableOfL1Target, result), parseProofOutline(stmts, i + 1, false));
   } else if (stmt instanceof ExpressionStatement && stmt.expr instanceof AssignmentExpression && stmt.expr.op == '=' && stmt.expr.lhs instanceof SubscriptExpression) {
     const rhs = stmt.expr.rhs;
     const subscriptExpression = stmt.expr.lhs;

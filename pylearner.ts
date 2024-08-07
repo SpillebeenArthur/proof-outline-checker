@@ -6792,10 +6792,13 @@ def removeCall():
 def removeCall():
   assert [1,2,1] == [1,2,1] #PRECONDITIE
   K = [1,2,1]
-  assert K == [1,2,1] 
-  assert remove(K,1) == [2,1] # Uitgesteld
+  assert K == [1,2,1]
+  assert [3,3] == [3,3] # Uitgesteld
+  B = [3,3]
+  assert B == [3,3]
+  assert remove(K,1) == [2,1] and B == [3,3] # Uitgesteld
   K.remove(1)
-  assert K == [2,1]  #POSTCONDITIE
+  assert K == [2,1] and B == [3,3]  #POSTCONDITIE
   return K
 `,
   statements: `assert removeCall() == [2,1]`,

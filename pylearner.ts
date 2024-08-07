@@ -5742,6 +5742,172 @@ def method():
   locStart: 226,
   locEnd: 227
 };
+const aliasViolationExampleClearMethod: TestCase = {
+  declarations:
+`# Wet Uitgesteld: b
+def method(x):
+    assert [1,2] == [1,2] #PRECONDITIE
+    a = [1,2]
+    assert a == [1,2]
+    assert  [2,2] == [2,2] # Uitgesteld
+    b = [2,2]
+    assert  b == [2,2]
+    assert True
+    if x:
+      assert True and x
+      assert b == b
+      a = b
+      assert a == b
+      assert True
+      
+    else:
+      assert True and not x
+      assert 1 == 1 # Uitgesteld
+      d = 1
+      assert d == 1
+      assert True
+    assert True
+    assert [] == [] and len(b) == 2 # Uitgesteld
+    a.clear()
+    assert a == [] and len(b) == 2 #POSTCONDITIE
+`,
+  errorMessage: `Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a`,
+  locStart: 511,
+  locEnd: 512
+};
+const aliasViolationExampleExtendMethod: TestCase = {
+  declarations:
+`# Wet Uitgesteld: b
+def method(x):
+    assert [1,2] == [1,2] #PRECONDITIE
+    a = [1,2]
+    assert a == [1,2]
+    assert  [2,2] == [2,2] # Uitgesteld
+    b = [2,2]
+    assert  b == [2,2]
+    assert True
+    if x:
+      assert True and x
+      assert a == a # Uitgesteld
+      b = a
+      assert b == a
+      assert True
+    else:
+      assert True and not x
+      assert 5 == 5
+      c = 5
+      assert c == 5
+      assert True
+    assert True
+    assert a + b == [1,2,2,2] and len(b) == 2 # Uitgesteld
+    a.extend(b)
+    assert a == [1,2,2,2] and len(b) == 2 #POSTCONDITIE
+`,
+  errorMessage: `Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a`,
+  locStart: 515,
+  locEnd: 516
+};
+const aliasViolationExampleInsertMethod: TestCase = {
+  declarations:
+`# Wet Uitgesteld: b
+def method(x):
+    assert [1,2] == [1,2] #PRECONDITIE
+    a = [1,2]
+    assert a == [1,2]
+    assert  [2,2] == [2,2] # Uitgesteld
+    b = [2,2]
+    assert  b == [2,2]
+    assert True
+    if x:
+      assert True and x
+      assert a == a # Uitgesteld
+      b = a
+      assert b == a
+      assert True
+    else:
+      assert True and not x
+      assert 5 == 5
+      c = 5
+      assert c == 5
+      assert True
+    assert True
+    assert a[:0] + [5] + a[0:] == [5,1,2] and b == [2,2] # Uitgesteld
+    a.insert(0,5)
+    assert a == [5,1,2] and b == [2,2] # POSTCONDITIE
+`,
+  errorMessage: `Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a`,
+  locStart: 526,
+  locEnd: 527
+};
+const aliasViolationExamplePopMethod: TestCase = {
+  declarations:
+`# Wet Uitgesteld: b
+def method(x):
+    assert [1,2] == [1,2] #PRECONDITIE
+    a = [1,2]
+    assert a == [1,2]
+    assert  [2,2] == [2,2] # Uitgesteld
+    b = [2,2]
+    assert  b == [2,2]
+    assert True
+    if x:
+      assert True and x
+      assert 5 == 5 # Uitgesteld
+      c = 5
+      assert c == 5
+      assert True
+    else:
+      assert True and not x
+      assert b == b # Uitgesteld
+      a = b
+      assert a == b
+      assert True
+    assert True 
+    assert a[:-1] + a[-1:][1:] == [1] and len(b) == 2 # Uitgesteld
+    a.pop(-1)
+    assert a == [1] and len(b) == 2 # POSTCONDITIE
+`,
+  errorMessage: `Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a`,
+  locStart: 534,
+  locEnd: 535
+};
+const aliasViolationExampleRemoveMethod: TestCase = {
+  declarations:
+`def remove(L, E):
+    if L[0] == E:
+        return L[1:]
+    else:
+        return [L[0]] + remove(L[1:], E)
+# Wet Uitgesteld: b
+def method(x):
+    assert [1,2] == [1,2] #PRECONDITIE
+    a = [1,2]
+    assert a == [1,2]
+    assert  [2,2] == [2,2] # Uitgesteld
+    b = [2,2]
+    assert  b == [2,2]
+    assert True
+    if x:
+      assert True and x
+      assert 5 == 5 # Uitgesteld
+      c = 5
+      assert c == 5
+      assert True
+    else:
+      assert True and not x
+      assert b == b # Uitgesteld
+      a = b
+      assert a == b
+      assert True
+    assert True 
+    assert remove(a,1) == [2] and b == [3,3] # Uitgesteld
+    a.remove(1)
+    assert a == [2] and b == [3,3]  #POSTCONDITIE
+`,
+  errorMessage: `Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a`,
+  locStart: 636,
+  locEnd: 637
+};
 const listMutationViolationExampleAppendTakesOnlyOneArgument: TestCase = {
   declarations:
 `def method():
@@ -6046,6 +6212,11 @@ async function testAliasingViolationExamples() {
   await testAliasingViolationTestCase(aliasViolationExampleSingleWhileLusMultipleLoopings);
   await testAliasingViolationTestCase(aliasViolationExampleSameVariableAssigment);
   await testAliasingViolationTestCase(aliasViolationExampleAppendMethod);
+  await testAliasingViolationTestCase(aliasViolationExampleClearMethod);
+  await testAliasingViolationTestCase(aliasViolationExampleExtendMethod);
+  await testAliasingViolationTestCase(aliasViolationExampleInsertMethod);
+  await testAliasingViolationTestCase(aliasViolationExamplePopMethod);
+  await testAliasingViolationTestCase(aliasViolationExampleRemoveMethod);
   console.log("All alias violation error tests passed!");
 }
 

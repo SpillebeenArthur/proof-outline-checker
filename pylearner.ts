@@ -670,17 +670,29 @@ class AssignmentExpression extends Expression {
       this.push(new OperandBinding(this, 'void'));
       return;
     }
-
     let bindingThunk = await this.lhs.evaluateBinding(env);
-    if (this.op != '=')
-      this.push(bindingThunk(peek).value);
-    await this.rhs.evaluate(env);
-    await this.breakpoint();
-    let [rhs] = pop(1);
-    let [lhsValue] = this.op == '=' ? [undefined] : pop(1);
-    let lhs = bindingThunk(pop);
-    let result = this.evaluateOperator(lhsValue, rhs);
-    this.push(lhs.setValue(result));
+    if (this.lhs instanceof SliceExpression) {
+      await this.rhs.evaluate(env);
+      await this.breakpoint();
+      let [rhs] = pop(1);
+      let [target, start, end] = bindingThunk(pop);
+      if (!(target instanceof ListObject))
+        this.executionError(target + " is geen lijst");
+      if (!(rhs instanceof ListObject))
+        this.executionError(rhs + " is geen lijst");
+      target.with_slice(start, end, rhs);
+      this.push(target);
+    } else {
+      if (this.op != '=')
+        this.push(bindingThunk(peek).value);
+      await this.rhs.evaluate(env);
+      await this.breakpoint();
+      let [rhs] = pop(1);
+      let [lhsValue] = this.op == '=' ? [undefined] : pop(1);
+      let lhs = bindingThunk(pop);
+      let result = this.evaluateOperator(lhsValue, rhs);
+      this.push(lhs.setValue(result));
+    }
   }
 }
 
@@ -927,17 +939,17 @@ class ListObject extends JavaObject {
   }
   remove(item: Value) {
     let firstIndexOfElement = this.getElements().findIndex(e => e == item);
-    if(firstIndexOfElement != -1)
+    if (firstIndexOfElement != -1)
       return this.pop(firstIndexOfElement);
     else {
       throw new Error("Element is not in list.");
     }
   }
   pop(index: number) {
-    if(index >= this.length)
+    if (index >= this.length)
       throw new Error("Index out of range for pop method.");
     const absIndex = index >= 0 ? index : index + this.length;
-    if(absIndex < 0)
+    if (absIndex < 0)
       throw new Error("Index out of range for pop method.");
     let fields: {[index: string]: FieldBinding} = {};
     for (let i = 0; i < absIndex; i++)
@@ -954,9 +966,9 @@ class ListObject extends JavaObject {
   insert(index: number, item: Value) {
     const absIndex = index >= 0 ? index : index + this.length;
     let resultIndex = absIndex;
-    if(absIndex < 0)
+    if (absIndex < 0)
       resultIndex = 0;
-    else if(absIndex > this.length)
+    else if (absIndex > this.length)
       resultIndex = this.length;
     for (let i = this.length; i != resultIndex; i--)
       this.fields[i] = this.fields[i-1];
@@ -980,6 +992,33 @@ class ListObject extends JavaObject {
     if (typeof document !== 'undefined')
       this.domNode = updateListHeapObjectDOMNode(this);
     this.length = newLength;
+    return this;
+  }
+  with_slice(start: number, end: number, elements: ListObject) {
+    const absStart = start >= 0 ? start : start + this.length;
+    let resultStartIndex = absStart;
+    if (absStart < 0)
+      resultStartIndex = 0;
+    else if (absStart > this.length)
+      resultStartIndex = this.length;
+    const absEnd = end >= 0 ? end : end + this.length;
+    let resultEndIndex = absEnd;
+    if (absEnd < 0)
+      resultEndIndex = 0;
+    else if (absEnd > this.length)
+      resultEndIndex = this.length;
+    resultEndIndex = resultEndIndex < resultStartIndex ? resultStartIndex : resultEndIndex;
+    let fields: {[index: string]: FieldBinding} = {};
+    for (let i = 0; i < resultStartIndex; i++)
+      fields[i] = new FieldBinding(this.fields[i].value);
+    for (let i = 0; i < elements.length; i++)
+      fields[resultStartIndex+i] = new FieldBinding(elements.fields[i].value);
+    for (let i = 0; i < (this.length-resultEndIndex); i++)
+      fields[resultStartIndex+elements.length+i] = new FieldBinding(this.fields[resultEndIndex+i].value);
+    this.fields = fields;
+    if (typeof document !== 'undefined')
+      this.domNode = updateListHeapObjectDOMNode(this);
+    this.length = resultStartIndex+elements.length+(this.length-resultEndIndex)
     return this;
   }
   plus(other: ListObject) {
@@ -1328,6 +1367,17 @@ class SliceExpression extends Expression {
     this.startIndex.checkAgainst(env, intType);
     this.endIndex.checkAgainst(env, intType);
     return targetType;
+  }
+  async evaluateBinding(env: Scope) {
+    await this.target.evaluate(env);
+    await this.startIndex.evaluate(env);
+    await this.endIndex.evaluate(env);
+    return (pop?: (nbOperands: number) => Value[]) => {
+      let [target, startIndex, endIndex] = pop!(3);
+      if (!(target instanceof ListObject))
+        this.executionError(target + " is geen lijst");
+    return [target, startIndex, endIndex];
+    }
   }
 
   async evaluate(env: Scope) {
@@ -2447,7 +2497,7 @@ function parseProofOutline(stmts: Statement[], i: number, precededByAssert: bool
       return stmt.executionError(`Opdracht moet worden voorafgegaan door een assert statement`);
     if (preconditionHasMayAlias(previousStatement.condition, removeTargetExpressionName, stmt.mayAliasRelation!))
       return stmt.expr.executionError(`Deze opdracht die het list-object ${removeTargetExpressionName} muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als ${removeTargetExpressionName}`);
-    let args = [stmt.expr.target, stmt.expr.item];
+    let args = [removeTargetExpression, removeItemExpression];
     const parseType = (t: Type) => {
       return parseProofOutlineType(t, () => {
         return stmt.executionError("Oproepen van functies met een parameter van type '" + t.toString() + "' worden nog niet ondersteund in bewijssilhouetten");
@@ -2467,6 +2517,12 @@ function parseProofOutline(stmts: Statement[], i: number, precededByAssert: bool
     const proofOutlineVariableOfL1Target = L1.getProofOutlineVariable(() => {
       return stmt.executionError(`Toekenningen aan variabelen van het type ${L1.type} worden nog niet ondersteund.`);
     });
+    const previousStatement = stmts[i-1];
+    const L1Name = L1.name;
+    if (!(previousStatement instanceof AssertStatement))
+      return stmt.executionError(`Opdracht moet worden voorafgegaan door een assert statement`);
+    if (preconditionHasMayAlias(previousStatement.condition, L1Name, stmt.mayAliasRelation!))
+      return stmt.expr.executionError(`Deze opdracht die het list-object ${L1Name} muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als ${L1Name}`);
     const L2 = stmt.expr.rhs;
     const startIndex = stmt.expr.lhs.startIndex;
     const endIndex = stmt.expr.lhs.endIndex;
@@ -6996,6 +7052,37 @@ def removeCall():
   return K
 `,
   statements: `assert removeCall() == [2,1]`,
+  expression: ``
+}, {
+  title: 'Simple Slice assignments inserting an element',
+  declarations: 
+`def method():
+  xs = [10, 20, 30]
+  xs[2:1] = [25]
+  xs[-2:1] = [23]
+  return xs
+`,
+  statements: `assert method() == [10, 20, 23, 25, 30]`,
+  expression: ``
+}, {
+  title: 'Simple Slice assignment replacing the elements, with silent indexes',
+  declarations: 
+`def method():
+  xs = [1, 2, 3, 4, 5]
+  xs[:] = [4, 2]
+  return xs
+`,
+  statements: `assert method() == [4, 2]`,
+  expression: ``
+}, {
+  title: 'Simple Slice assignment inserting elements with silent start index',
+  declarations: 
+`def method():
+  xs = [1, 2, 3, 4, 5]
+  xs[:0] = [-1, 0] 
+  return xs
+`,
+  statements: `assert method() == [-1, 0, 1, 2, 3, 4, 5]`,
   expression: ``
 }
 ];

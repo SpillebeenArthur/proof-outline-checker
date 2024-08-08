@@ -1018,7 +1018,7 @@ class ListObject extends JavaObject {
     this.fields = fields;
     if (typeof document !== 'undefined')
       this.domNode = updateListHeapObjectDOMNode(this);
-    this.length = resultStartIndex+elements.length+(this.length-resultEndIndex)
+    this.length = resultStartIndex+elements.length+(this.length-resultEndIndex);
     return this;
   }
   plus(other: ListObject) {
@@ -1376,8 +1376,8 @@ class SliceExpression extends Expression {
       let [target, startIndex, endIndex] = pop!(3);
       if (!(target instanceof ListObject))
         this.executionError(target + " is geen lijst");
-    return [target, startIndex, endIndex];
-    }
+      return [target, startIndex, endIndex];
+    };
   }
 
   async evaluate(env: Scope) {
@@ -5441,7 +5441,7 @@ assert fibonacci(6) == 8`,
 expression: `fibonacci(7)`
 },
 ]
-const aliasViolationExampleSameVariableAssigment: TestCase = {
+const aliasViolationExampleSameVariableAssignment: TestCase = {
   declarations:
 `# Wet Uitgesteld: b
 def method():
@@ -5987,6 +5987,50 @@ def method(x):
   locStart: 636,
   locEnd: 637
 };
+const aliasViolationExampleSliceAssignment: TestCase = {
+  declarations:
+`def max(x, y):
+  if x < y:
+    return y
+  else:
+    return x
+def norm(I, L):
+  if 0 <= I:
+    return I
+  else:
+    return max(0, len(L) + I)
+def with_slice(L1, I1, I2, L2):
+  return L1[:I1] + L2 + L1[max(norm(I1, L1), norm(I2, L1)):]
+#Wet Uitgesteld : b
+def method(x):
+  assert [1,2] == [1,2] #PRECONDITIE
+  a = [1,2]
+  assert a == [1,2]
+  assert  [2,2] == [2,2] # Uitgesteld
+  b = [2,2]
+  assert  b == [2,2]
+  assert True
+  if x:
+    assert True and x
+    assert 5 == 5 # Uitgesteld
+    c = 5
+    assert c == 5
+    assert True
+  else:
+    assert True and not x
+    assert b == b # Uitgesteld
+    a = b
+    assert a == b
+    assert True
+  assert True 
+  assert with_slice(a, 2, -1, [5]) == [1,2,5,4] and len(b) == 2 # Uitgesteld 
+  a[2:-1] = [5]
+  assert a == [1,2,5,4] and len(b) == 2 #POSTCONDITIE
+`,
+  errorMessage: `Deze opdracht die het list-object a muteert wordt met deze preconditie niet ondersteund door Bewijssilhouettencontroleur want de preconditie vermeldt een variabele die mogelijks wijst naar hetzelfde object als a`,
+  locStart: 740,
+  locEnd: 741
+};
 const listMutationViolationExampleAppendTakesOnlyOneArgument: TestCase = {
   declarations:
 `def method():
@@ -6272,7 +6316,6 @@ async function testListMutationViolationTestCase(testCase: TestCase) {
     let decls = parseDeclarations(mkLocFactory(declarations), declarations, processComment);
     checkDeclarations(decls);
   } catch (error: any) {
-    exceptionCaught = true;
     if (error.msg != errorMessage || error.loc.start != locStart || error.loc.end != locEnd)
       throw new Error("Test list mutation violation case failed, caught incorrect error");
   }
@@ -6289,13 +6332,14 @@ async function testAliasingViolationExamples() {
   await testAliasingViolationTestCase(aliasViolationExampleViolationInLastLoopOfLus);
   await testAliasingViolationTestCase(aliasViolationExampleDoubleWhileLusMultipleLoopings);
   await testAliasingViolationTestCase(aliasViolationExampleSingleWhileLusMultipleLoopings);
-  await testAliasingViolationTestCase(aliasViolationExampleSameVariableAssigment);
+  await testAliasingViolationTestCase(aliasViolationExampleSameVariableAssignment);
   await testAliasingViolationTestCase(aliasViolationExampleAppendMethod);
   await testAliasingViolationTestCase(aliasViolationExampleClearMethod);
   await testAliasingViolationTestCase(aliasViolationExampleExtendMethod);
   await testAliasingViolationTestCase(aliasViolationExampleInsertMethod);
   await testAliasingViolationTestCase(aliasViolationExamplePopMethod);
   await testAliasingViolationTestCase(aliasViolationExampleRemoveMethod);
+  await testAliasingViolationTestCase(aliasViolationExampleSliceAssignment);
   console.log("All alias violation error tests passed!");
 }
 
@@ -7083,6 +7127,43 @@ def removeCall():
   return xs
 `,
   statements: `assert method() == [-1, 0, 1, 2, 3, 4, 5]`,
+  expression: ``
+}, {
+  title: 'Simple Slice assignment replacing one element',
+  declarations: 
+`def method():
+  a = [1,2,3,4]
+  a[2:-1] = [5]
+  return a
+`,
+  statements: `assert method() == [1,2,5,4]`,
+  expression: ``
+}, {
+  title: 'Proof outline with simple Slice assignment replacing one element',
+  declarations: 
+`def max(x, y):
+  if x < y:
+    return y
+  else:
+    return x
+def norm(I, L):
+  if 0 <= I:
+    return I
+  else:
+    return max(0, len(L) + I)
+def with_slice(L1, I1, I2, L2):
+  return L1[:I1] + L2 + L1[max(norm(I1, L1), norm(I2, L1)):]
+#Wet Uitgesteld : b
+def method():
+  assert [1,2,3,4] == [1,2,3,4] #PRECONDITIE
+  a = [1,2,3,4]
+  assert a == [1,2,3,4]
+  assert with_slice(a, 2, -1, [5]) == [1,2,5,4] # Uitgesteld 
+  a[2:-1] = [5]
+  assert a == [1,2,5,4] #POSTCONDITIE
+  return a 
+`,
+  statements: `assert method() == [1,2,5,4]`,
   expression: ``
 }
 ];

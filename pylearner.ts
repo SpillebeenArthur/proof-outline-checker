@@ -6316,6 +6316,7 @@ async function testListMutationViolationTestCase(testCase: TestCase) {
     let decls = parseDeclarations(mkLocFactory(declarations), declarations, processComment);
     checkDeclarations(decls);
   } catch (error: any) {
+    exceptionCaught = true;
     if (error.msg != errorMessage || error.loc.start != locStart || error.loc.end != locEnd)
       throw new Error("Test list mutation violation case failed, caught incorrect error");
   }
